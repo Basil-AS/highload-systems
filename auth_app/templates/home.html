@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+
+{% block title %}Домашняя страница{% endblock %}
+
+{% block content %}
+<h1>Добро пожаловать в веб-приложение с аутентификацией!</h1>
+<p>Это пример веб-приложения с использованием Django и django-allauth.</p>
+
+{% if user.is_authenticated %}
+    <p>Вы вошли как <strong>{{ user.username }}</strong>. <a href="/dashboard/">Перейти в личный кабинет</a>.</p>
+{% else %}
+    <p>Пожалуйста, <a href="/login/">войдите</a> или <a href="/register/">зарегистрируйтесь</a>.</p>
+{% endif %}
+
+<div class="info-box">
+    <h3>Информация о варианте</h3>
+    <p><strong>Вариант 2:</strong> Веб-приложение с аутентификацией</p>
+    <p><strong>ФИО:</strong> Скрыпник Василий Александрович</p>
+</div>
+{% endblock %}

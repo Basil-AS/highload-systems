@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block title %}Личный кабинет{% endblock %}
+
+{% block content %}
+<h1>Личный кабинет</h1>
+<p>Здравствуйте, {{ user.username }}!</p>
+
+<div class="info-box">
+    <h3>Информация о пользователе</h3>
+    <p><strong>Имя пользователя:</strong> {{ user.username }}</p>
+    <p><strong>Email:</strong> {{ user.email }}</p>
+    <p><strong>Дата регистрации:</strong> {{ user.date_joined }}</p>
+    
+    {% if user.profile.bio %}
+    <p><strong>Биография:</strong> {{ user.profile.bio }}</p>
+    {% endif %}
+</div>
+
+<div class="info-box">
+    <a href="/accounts/logout/" class="btn">Выйти</a>
+</div>
+{% endblock %}

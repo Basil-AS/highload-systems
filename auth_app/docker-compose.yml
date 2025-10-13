@@ -21,11 +21,14 @@ services:
       - POSTGRES_PASSWORD=password
       - POSTGRES_HOST=db
       - POSTGRES_PORT=5432
+      - DJANGO_SUPERUSER_USERNAME=admin
+      - DJANGO_SUPERUSER_EMAIL=admin@example.com
+      - DJANGO_SUPERUSER_PASSWORD=admin123
     depends_on:
       - db
     volumes:
       - ./static_collected:/app/static_collected
-    command: /bin/sh -c "python manage.py migrate --noinput && python manage.py collectstatic --noinput && gunicorn auth_project.wsgi:application --bind 0.0.0.0:${PORT:-5001} --workers ${GUNICORN_WORKERS:-3} --timeout ${GUNICORN_TIMEOUT:-60}"
+  command: /bin/sh -c "python manage.py migrate --noinput && python manage.py createsuperuser --noinput || true && python manage.py collectstatic --noinput && gunicorn auth_project.wsgi:application --bind 0.0.0.0:${PORT:-5001} --workers ${GUNICORN_WORKERS:-3} --timeout ${GUNICORN_TIMEOUT:-60}"
 
   backend2:
     build: .

@@ -1,6 +1,8 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.db import connection
+import os
+import random
 
 
 def health_check(request):
@@ -24,3 +26,24 @@ def health_check(request):
         health_status['error'] = str(e)
     
     return JsonResponse(health_status)
+
+
+def status_view(request):
+    """Возвращает информацию о сервисе и порту (для проверки балансировки)."""
+    port = os.getenv("PORT", "8000")
+    return JsonResponse({
+        "service": "backend",
+        "port": int(port)
+    })
+
+
+def data_view(request):
+    """Возвращает случайные данные (для проверки кэширования)."""
+    return JsonResponse({
+        "value": random.randint(1, 100)
+    })
+
+
+def error_view(request):
+    """Страница, возвращающая код ответа отличный от 200 (для варианта 2)."""
+    return JsonResponse({"error": "intentional error"}, status=418)

@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
 from django.views.generic import TemplateView
+from users import views as user_views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -10,4 +11,8 @@ urlpatterns = [
     path('login/', TemplateView.as_view(template_name='account/login.html'), name='login'),
     path('register/', TemplateView.as_view(template_name='account/signup.html'), name='register'),
     path('health/', include('users.urls')),
+    # LR2 endpoints
+    path('status', user_views.status_view, name='lr2_status'),
+    path('data', user_views.data_view, name='lr2_data'),
+    path('error', user_views.error_view, name='lr2_error'),
 ]

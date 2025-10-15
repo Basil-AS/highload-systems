@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 from django.db import connection
 import os
 import random
@@ -37,6 +38,7 @@ def status_view(request):
     })
 
 
+@csrf_exempt
 def data_view(request):
     """Возвращает случайные данные (для проверки кэширования)."""
     return JsonResponse({

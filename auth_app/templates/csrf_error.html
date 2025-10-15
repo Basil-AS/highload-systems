@@ -27,7 +27,9 @@
 
 <div class="info-box">
     <h3>Технические детали (для разработчиков):</h3>
-    <p>Убедитесь, что в шаблоне формы есть тег {% raw %}{% csrf_token %}{% endraw %}.</p>
+    <p>Убедитесь, что в шаблоне формы есть тег 
+        {% templatetag openblock %} csrf_token {% templatetag closeblock %}.
+    </p>
     <p>Текущий CSRF токен: <code>{{ csrf_token }}</code></p>
 </div>
 {% endblock %}

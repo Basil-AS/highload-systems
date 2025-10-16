@@ -56,6 +56,7 @@
 
 ## Схема архитектуры
 - D2-диаграмма: `docs/lr4_architecture.d2` (основная схема).
+- Mermaid-диаграмма: `docs/lr4_architecture.mmd` (альтернативная схема, удобно рендерить в GitHub/GitLab/VS Code).
 - [Опц] draw.io: `docs/lr4_architecture.drawio` (если понадобится графический редактор); экспорт в PNG/SVG для отчета.
 - Блоки: DNS (симуляция) -> Nginx -> API xN -> Queue/Workers -> PostgreSQL Primary/Replica -> Redis Cache -> Prometheus/Grafana.
 

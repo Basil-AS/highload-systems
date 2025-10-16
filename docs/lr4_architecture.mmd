@@ -1,55 +1,56 @@
 %% Mermaid architecture diagram for LR4 (Variant 8: Search System)
 flowchart LR
-  subgraph DNS[DNS (Round Robin / Simulation)]
+  subgraph DNS["DNS (Round Robin / Simulation)"]
+    DNS_NODE[DNS]
   end
 
-  subgraph Edge[Nginx Reverse Proxy + Cache]
-  NGINX[Nginx]
+  subgraph Edge["Nginx Reverse Proxy + Cache"]
+    NGINX[Nginx]
   end
 
-  subgraph FE[Frontend Static]
-  FEUI[Static UI]
+  subgraph FE["Frontend Static"]
+    FEUI[Static UI]
   end
 
-  subgraph API[API Layer]
-  APIGW[API Gateway / Router]
+  subgraph API["API Layer"]
+    APIGW[API Gateway / Router]
   end
 
-  subgraph SVC[Microservices]
-  USVC[User Service v1/v2]
-  QSVC[Search/Query Service]
-  DSVC[Document Service]
+  subgraph SVC["Microservices"]
+    USVC[User Service v1/v2]
+    QSVC[Search/Query Service]
+    DSVC[Document Service]
   end
 
-  subgraph MQ[Queue]
-  Q[RabbitMQ / ValKey Streams]
+  subgraph MQ["Queue"]
+    Q[RabbitMQ / ValKey Streams]
   end
 
-  subgraph WORK[Workers]
-  IDX[Indexers]
+  subgraph WORK["Workers"]
+    IDX[Indexers]
   end
 
-  subgraph CACHE[Cache]
-  REDIS[Redis (ValKey)]
+  subgraph CACHE["Cache"]
+    REDIS[Redis (ValKey)]
   end
 
-  subgraph DB[Databases]
-  PRIMARY[(PostgreSQL Primary)]
-  REPLICA[(PostgreSQL Replica RO)]
-  AUDIT[(Audit DB - events, partitions by date)]
+  subgraph DB["Databases"]
+    PRIMARY[(PostgreSQL Primary)]
+    REPLICA[(PostgreSQL Replica RO)]
+    AUDIT[(Audit DB - events, partitions by date)]
   end
 
-  subgraph MON[Monitoring]
-  PROM[Prometheus]
-  GRAF[Grafana]
+  subgraph MON["Monitoring"]
+    PROM[Prometheus]
+    GRAF[Grafana]
   end
 
-  subgraph BKP[Backups]
-  BACKUP[(pg_dump / WAL / MinIO S3)]
+  subgraph BKP["Backups"]
+    BACKUP[(pg_dump / WAL / MinIO S3)]
   end
 
   %% Edges
-  DNS --> NGINX
+  DNS_NODE --> NGINX
   NGINX --> FEUI
   FEUI --> NGINX
   NGINX --> APIGW

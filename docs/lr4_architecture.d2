@@ -1,0 +1,105 @@
+direction: right
+
+DNS: {
+  label: "DNS (Round Robin / симуляция)"
+}
+
+NGINX: {
+  label: "Nginx Reverse Proxy + Cache"
+}
+
+CDN: {
+  label: "Static (CDN/Cache)"
+}
+
+Frontend: {
+  label: "Frontend (Static UI)"
+}
+
+API: {
+  label: "API Gateway / Router"
+}
+
+UserService: {
+  label: "User Service (v1/v2)"
+}
+
+SearchService: {
+  label: "Search/Query Service"
+}
+
+DocService: {
+  label: "Document Service"
+}
+
+Queue: {
+  label: "Queue (RabbitMQ/ValKey Streams)"
+}
+
+Indexer: {
+  label: "Indexer Worker(s)"
+}
+
+Cache: {
+  label: "Redis (ValKey)"
+}
+
+DBPrimary: {
+  label: "PostgreSQL Primary"
+}
+
+DBReplica: {
+  label: "PostgreSQL Replica (RO)"
+}
+
+AuditDB: {
+  label: "Audit DB (Event Sourcing, partitions by date)"
+}
+
+Prometheus: {
+  label: "Prometheus"
+}
+
+Grafana: {
+  label: "Grafana"
+}
+
+Backup: {
+  label: "Backups (pg_dump / PITR / MinIO S3)"
+}
+
+// Flows
+DNS -> NGINX: "RR DNS to edge"
+NGINX -> Frontend: "serve /static"
+Frontend -> NGINX: "API requests"
+NGINX -> API: "reverse proxy + split_clients"
+API -> UserService: "REST"
+API -> SearchService: "REST"
+API -> DocService: "REST"
+
+SearchService -> Cache: "check/get cached results"
+SearchService -> DBReplica: "read queries"
+SearchService -> Queue: "enqueue indexing jobs"
+DocService -> Queue: "enqueue parse/index"
+Indexer -> DBPrimary: "write indexes"
+Indexer -> AuditDB: "append events"
+UserService -> DBPrimary: "write user data"
+UserService -> AuditDB: "append events"
+
+DBPrimary -> DBReplica: "replication"
+API -> Cache: "cache auth/session/metadata (optional)"
+
+Prometheus -> NGINX: "scrape metrics/exporter"
+Prometheus -> API: "scrape"
+Prometheus -> UserService: "scrape"
+Prometheus -> SearchService: "scrape"
+Prometheus -> DocService: "scrape"
+Prometheus -> DBPrimary: "scrape exporter"
+Prometheus -> DBReplica: "scrape exporter"
+Prometheus -> Queue: "scrape exporter"
+Prometheus -> Indexer: "scrape"
+Prometheus -> Cache: "scrape exporter"
+Grafana -> Prometheus: "dashboards"
+
+DBPrimary -> Backup: "pg_dump / WAL archiving"
+Backup -> DBPrimary: "restore / PITR"

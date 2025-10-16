@@ -55,7 +55,8 @@
 - CAP: для страницы поиска выбираем AP при перегрузках (уступаем строгой консистентности выдачи), но для CRUD пользователей — ближе к CP.
 
 ## Схема архитектуры
-- Файл: docs/lr4_architecture.drawio (план); экспорт в PNG/SVG для отчета.
+- D2-диаграмма: `docs/lr4_architecture.d2` (основная схема).
+- [Опц] draw.io: `docs/lr4_architecture.drawio` (если понадобится графический редактор); экспорт в PNG/SVG для отчета.
 - Блоки: DNS (симуляция) -> Nginx -> API xN -> Queue/Workers -> PostgreSQL Primary/Replica -> Redis Cache -> Prometheus/Grafana.
 
 ## Отчёт и документация

@@ -1,0 +1,58 @@
+services:
+  monitor:
+    image: citusdata/pg_auto_failover:latest
+    container_name: pgauto-monitor
+    environment:
+      PGDATA: /home/docker/pgdata/monitor
+    ports:
+      - "5434:5432"
+    command: ["bash", "-lc", "pg_autoctl create monitor --pgdata $$PGDATA --pgport 5432 --auth trust --ssl-self-signed --hostname pgauto-monitor && (grep -q 'host all all 0.0.0.0/0 trust' $$PGDATA/pg_hba.conf || echo 'host all all 0.0.0.0/0 trust' >> $$PGDATA/pg_hba.conf) && pg_autoctl run"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autoctl_node -d pg_auto_failover"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  node1:
+    image: citusdata/pg_auto_failover:latest
+    container_name: pgauto-node1
+    environment:
+      PGUSER: docker
+      PGPASSWORD: secret
+      PGDATA: /home/docker/pgdata/node1
+    ports:
+      - "5432:5432"
+    depends_on:
+      monitor:
+        condition: service_healthy
+    command: ["bash", "-lc", "pg_autoctl create postgres --pgdata $$PGDATA --pgport 5432 --username docker --dbname app_db --monitor postgres://autoctl_node:secret@pgauto-monitor:5432/pg_auto_failover --auth trust --ssl-self-signed --hostname pgauto-node1 && (grep -q 'host all all 0.0.0.0/0 trust' $$PGDATA/pg_hba.conf || echo 'host all all 0.0.0.0/0 trust' >> $$PGDATA/pg_hba.conf) && pg_autoctl run"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docker -d app_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  node2:
+    image: citusdata/pg_auto_failover:latest
+    container_name: pgauto-node2
+    environment:
+      PGUSER: docker
+      PGPASSWORD: secret
+      PGDATA: /home/docker/pgdata/node2
+    ports:
+      - "5433:5432"
+    depends_on:
+      monitor:
+        condition: service_healthy
+      node1:
+        condition: service_healthy
+    command: ["bash", "-lc", "pg_autoctl create postgres --pgdata $$PGDATA --pgport 5432 --username docker --dbname app_db --monitor postgres://autoctl_node:secret@pgauto-monitor:5432/pg_auto_failover --auth trust --ssl-self-signed --hostname pgauto-node2 && (grep -q 'host all all 0.0.0.0/0 trust' $$PGDATA/pg_hba.conf || echo 'host all all 0.0.0.0/0 trust' >> $$PGDATA/pg_hba.conf) && pg_autoctl run"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docker -d app_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+networks:
+  default:
+    name: pg_auto_default

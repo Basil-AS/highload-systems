@@ -18,8 +18,7 @@ from fastapi.responses import Response
 # =====================================================
 # Configuration
 # =====================================================
-DATABASE_URL_READ = os.getenv("DATABASE_URL_READ", "postgresql://docker:secret@localhost:5433/search_db")
-DATABASE_URL_WRITE = os.getenv("DATABASE_URL_WRITE", "postgresql://docker:secret@localhost:5432/search_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://docker:secret@localhost:5432/app_db")
 VALKEY_URL = os.getenv("VALKEY_URL", "redis://localhost:6379/1")
 CACHE_TTL = 300  # 5 minutes
 
@@ -35,21 +34,19 @@ SEARCH_RESULTS = Histogram('search_results_count', 'Number of search results')
 # =====================================================
 # Global connections
 # =====================================================
-db_pool_read: Optional[asyncpg.Pool] = None
-db_pool_write: Optional[asyncpg.Pool] = None
+db_pool: Optional[asyncpg.Pool] = None
 redis_client: Optional[aioredis.Redis] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager"""
-    global db_pool_read, db_pool_write, redis_client
+    global db_pool, redis_client
     
-    # Database pools (read from standby, write to primary)
-    db_pool_read = await asyncpg.create_pool(DATABASE_URL_READ, min_size=5, max_size=20)
-    db_pool_write = await asyncpg.create_pool(DATABASE_URL_WRITE, min_size=2, max_size=5)
+    # Database pool
+    db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=5, max_size=20)
     
     # Create tables and index structures
-    async with db_pool_write.acquire() as conn:
+    async with db_pool.acquire() as conn:
         await conn.execute("""
             -- Таблица терминов (слов)
             CREATE TABLE IF NOT EXISTS terms (
@@ -84,8 +81,8 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    await db_pool_read.close()
-    await db_pool_write.close()
+    await db_pool.close()
+    await db_pool.close()
     await redis_client.close()
 
 # =====================================================
@@ -133,7 +130,7 @@ async def search_in_database(query: str, limit: int) -> List[dict]:
         return []
     
     # Используем PostgreSQL full-text search
-    async with db_pool_read.acquire() as conn:
+    async with db_pool.acquire() as conn:
         rows = await conn.fetch(
             """
             SELECT 
@@ -162,7 +159,7 @@ async def search_in_database(query: str, limit: int) -> List[dict]:
 async def health_check():
     """Health check endpoint"""
     try:
-        async with db_pool_read.acquire() as conn:
+        async with db_pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
         await redis_client.ping()
         return {"status": "healthy", "service": "search-service"}
@@ -250,7 +247,7 @@ async def search_suggestions(
     """Get search suggestions (autocomplete)"""
     with REQUEST_LATENCY.labels(method="GET", endpoint="/api/search/suggestions").time():
         try:
-            async with db_pool_read.acquire() as conn:
+            async with db_pool.acquire() as conn:
                 rows = await conn.fetch(
                     """
                     SELECT DISTINCT title

@@ -1,3 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Docker
+*.log
+
+# Backups
+backups/
+
+# Database
+database/data/
+*.db
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Временные файлы
+*.tmp
+*.cache
+*.bak
+
 # Игнорировать файлы текстов заданий лабораторных работ
 task_LR*.txt
 docs/lr2_cheatsheet.md

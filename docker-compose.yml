@@ -27,6 +27,7 @@ services:
       DATABASE_URL: postgresql://docker:secret@pgauto-node1:5432/app_db
       VALKEY_URL: redis://valkey:6379/0
       AUDIT_SERVICE_URL: http://audit-service:8000
+      SECRET_KEY: "highload-lr4-secret-key-do-not-use-in-production-2025"
       VERSION: "v1"
     networks:
       - backend
@@ -43,6 +44,7 @@ services:
       DATABASE_URL: postgresql://docker:secret@pgauto-node1:5432/app_db
       VALKEY_URL: redis://valkey:6379/0
       AUDIT_SERVICE_URL: http://audit-service:8000
+      SECRET_KEY: "highload-lr4-secret-key-do-not-use-in-production-2025"
       VERSION: "v2"
     networks:
       - backend

@@ -130,10 +130,10 @@ async def get_current_user_id(authorization: Optional[str] = Header(None)) -> in
     token = authorization.split(" ")[1]
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: int = payload.get("sub")
-        if user_id is None:
+        user_id_str: str = payload.get("sub")
+        if user_id_str is None:
             raise HTTPException(status_code=401, detail="Invalid token")
-        return user_id
+        return int(user_id_str)
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
@@ -234,11 +234,11 @@ async def login_user(credentials: UserLogin):
             raise HTTPException(status_code=403, detail="User account is disabled")
         
         if not verify_password(credentials.password, row["hashed_password"]):
-            REQUEST_COUNT.labels(method="POST", endpoint="/api/users/login", status="error", version=SERVICE_VERSION).inc()
+            REQUEST_COUNT.labels(method="POST", endpoint="/api/users/login", status="error").inc()
             raise HTTPException(status_code=401, detail="Invalid username or password")
         
         access_token = create_access_token(
-            data={"sub": row["id"], "username": row["username"]},
+            data={"sub": str(row["id"]), "username": row["username"]},
             expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         )
         

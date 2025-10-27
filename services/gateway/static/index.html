@@ -10,15 +10,7 @@
     <div class="container">
         <header>
             <h1>🔍 Поисковая система</h1>
-            <p class="subtitle">ЛР4 - Вариант 8 - Высоконагруженные системы</p>
-            <div class="auth-buttons" id="authButtons">
-                <button onclick="showLogin()">Войти</button>
-                <button onclick="showRegister()">Регистрация</button>
-            </div>
-            <div class="user-info" id="userInfo" style="display: none;">
-                <span id="username"></span>
-                <button onclick="logout()">Выйти</button>
-            </div>
+            <p class="subtitle">ЛР4 - Вариант 8 - Высоконагруженные системы | Скрыпник В.А. | Группа 211-331</p>
         </header>
 
         <main>
@@ -49,32 +41,6 @@
                     <div id="documentsList"></div>
                 </div>
             </section>
-
-            <!-- Login Modal -->
-            <div id="loginModal" class="modal" style="display: none;">
-                <div class="modal-content">
-                    <span class="close" onclick="closeModal('loginModal')">&times;</span>
-                    <h2>Вход</h2>
-                    <input type="text" id="loginUsername" placeholder="Имя пользователя" />
-                    <input type="password" id="loginPassword" placeholder="Пароль" />
-                    <button onclick="login()">Войти</button>
-                    <div id="loginError" class="error"></div>
-                </div>
-            </div>
-
-            <!-- Register Modal -->
-            <div id="registerModal" class="modal" style="display: none;">
-                <div class="modal-content">
-                    <span class="close" onclick="closeModal('registerModal')">&times;</span>
-                    <h2>Регистрация</h2>
-                    <input type="email" id="regEmail" placeholder="Email" />
-                    <input type="text" id="regUsername" placeholder="Имя пользователя" />
-                    <input type="password" id="regPassword" placeholder="Пароль (минимум 6 символов)" />
-                    <input type="text" id="regFullname" placeholder="Полное имя (опционально)" />
-                    <button onclick="register()">Зарегистрироваться</button>
-                    <div id="registerError" class="error"></div>
-                </div>
-            </div>
         </main>
 
         <footer>

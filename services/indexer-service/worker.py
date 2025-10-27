@@ -133,8 +133,12 @@ async def index_document(
                     term_id, doc_id, positions, score
                 )
             
-            # Mark document as indexed in documents_db
-            # Note: This would ideally be in document-service, but we do it here for simplicity
+            # Mark document as indexed in documents table
+            await conn.execute(
+                "UPDATE documents SET indexed = TRUE WHERE id = $1",
+                doc_id
+            )
+            
             print(f"Document {doc_id} indexed successfully with {len(tf_scores)} unique terms")
     
     # Invalidate cache for search queries
@@ -181,6 +185,10 @@ async def main():
     print(f"RabbitMQ: {RABBITMQ_URL}")
     print(f"ValKey: {VALKEY_URL}")
     
+    # Wait a bit for services to be fully ready
+    print("Waiting 5 seconds for services to be ready...")
+    await asyncio.sleep(5)
+    
     # Connect to database
     db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
     print("Connected to database")
@@ -189,8 +197,20 @@ async def main():
     redis_client = await aioredis.from_url(VALKEY_URL, decode_responses=True)
     print("Connected to ValKey")
     
-    # Connect to RabbitMQ
-    connection = await aio_pika.connect_robust(RABBITMQ_URL)
+    # Connect to RabbitMQ with retry
+    max_retries = 5
+    for attempt in range(max_retries):
+        try:
+            connection = await aio_pika.connect_robust(RABBITMQ_URL)
+            break
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                print(f"RabbitMQ connection failed (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise
+    
     channel = await connection.channel()
     await channel.set_qos(prefetch_count=1)  # Process one message at a time
     

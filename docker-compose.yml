@@ -81,6 +81,11 @@ services:
       DATABASE_URL: postgresql://docker:secret@pgauto-node1:5432/app_db
       RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
       VALKEY_URL: redis://valkey:6379/1
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      valkey:
+        condition: service_started
     networks:
       - backend
       - pg_auto_default

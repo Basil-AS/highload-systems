@@ -1,167 +1,99 @@
-version: '3.9'
-
 services:
   # =====================================================
   # API Gateway (Nginx)
   # =====================================================
   nginx:
     build: ./services/gateway
-    container_name: search-nginx
+    container_name: search-nginx-canary
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./services/gateway/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./services/gateway/static:/usr/share/nginx/html:ro
-    depends_on:
-      - user-service
-      - document-service
-      - search-service
     networks:
       - frontend
       - backend
     restart: unless-stopped
 
   # =====================================================
-  # Microservices
+  # Microservices - Canary Deployment
   # =====================================================
-  user-service:
-    build: ./services/user-service
-    container_name: search-user-service
+  # User Service v1 (80% трафика)
+  user-service-v1:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: search-user-service-v1
     environment:
-      DATABASE_URL: postgresql://docker:secret@postgres-primary:5432/users_db
+      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
       VALKEY_URL: redis://valkey:6379/0
       AUDIT_SERVICE_URL: http://audit-service:8000
-    depends_on:
-      postgres-primary:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
+      VERSION: "v1"
     networks:
       - backend
+      - pg_auto_default
     restart: unless-stopped
-    deploy:
-      replicas: 2
+
+  # User Service v2 (20% трафика - canary)
+  user-service-v2:
+    build:
+      context: ./services/user-service-v2
+      dockerfile: Dockerfile
+    container_name: search-user-service-v2
+    environment:
+      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
+      VALKEY_URL: redis://valkey:6379/0
+      AUDIT_SERVICE_URL: http://audit-service:8000
+      VERSION: "v2"
+    networks:
+      - backend
+      - pg_auto_default
+    restart: unless-stopped
 
   document-service:
     build: ./services/document-service
     container_name: search-document-service
     environment:
-      DATABASE_URL: postgresql://docker:secret@postgres-primary:5432/documents_db
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
       AUDIT_SERVICE_URL: http://audit-service:8000
-    depends_on:
-      postgres-primary:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     networks:
       - backend
+      - pg_auto_default
     restart: unless-stopped
-    deploy:
-      replicas: 2
 
   search-service:
     build: ./services/search-service
     container_name: search-search-service
     environment:
-      DATABASE_URL_READ: postgresql://docker:secret@postgres-standby:5432/search_db
-      DATABASE_URL_WRITE: postgresql://docker:secret@postgres-primary:5432/search_db
+      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
       VALKEY_URL: redis://valkey:6379/1
-    depends_on:
-      postgres-primary:
-        condition: service_healthy
-      valkey:
-        condition: service_healthy
     networks:
       - backend
+      - pg_auto_default
     restart: unless-stopped
-    deploy:
-      replicas: 3  # 3 реплики для критичного сервиса поиска
 
   indexer-worker:
-    build: ./services/indexer-worker
+    build: ./services/indexer-service
     container_name: search-indexer-worker
     environment:
-      DATABASE_URL: postgresql://docker:secret@postgres-primary:5432/search_db
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
       VALKEY_URL: redis://valkey:6379/1
-    depends_on:
-      postgres-primary:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     networks:
       - backend
+      - pg_auto_default
     restart: unless-stopped
-    deploy:
-      replicas: 5  # 5 воркеров для параллельной индексации
 
   audit-service:
     build: ./services/audit-service
     container_name: search-audit-service
     environment:
-      DATABASE_URL: postgresql://docker:secret@postgres-primary:5432/audit_db
-    depends_on:
-      postgres-primary:
-        condition: service_healthy
+      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
     networks:
       - backend
+      - pg_auto_default
     restart: unless-stopped
-
-  # =====================================================
-  # Databases (PostgreSQL with replication)
-  # =====================================================
-  postgres-primary:
-    image: postgres:16-alpine
-    container_name: search-postgres-primary
-    environment:
-      POSTGRES_USER: docker
-      POSTGRES_PASSWORD: secret
-      POSTGRES_MULTIPLE_DATABASES: users_db,documents_db,search_db,audit_db
-      PGDATA: /var/lib/postgresql/data/pgdata
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-primary-data:/var/lib/postgresql/data
-      - ./database/init-scripts:/docker-entrypoint-initdb.d:ro
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U docker"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    command: |
-      postgres
-      -c wal_level=replica
-      -c max_wal_senders=10
-      -c max_replication_slots=10
-      -c hot_standby=on
-
-  postgres-standby:
-    image: postgres:16-alpine
-    container_name: search-postgres-standby
-    environment:
-      POSTGRES_USER: docker
-      POSTGRES_PASSWORD: secret
-      PGDATA: /var/lib/postgresql/data/pgdata
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres-standby-data:/var/lib/postgresql/data
-    networks:
-      - backend
-    depends_on:
-      postgres-primary:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U docker"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    # Note: Реальная настройка репликации требует дополнительных скриптов
-    # Для упрощения используем отдельную ноду, настройка репликации в скриптах
 
   # =====================================================
   # Cache (ValKey - Redis compatible)
@@ -189,8 +121,8 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: search-rabbitmq
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
     ports:
       - "5672:5672"
       - "15672:15672"  # Management UI
@@ -249,19 +181,6 @@ services:
   # =====================================================
   # Exporters
   # =====================================================
-  postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
-    container_name: search-postgres-exporter
-    environment:
-      DATA_SOURCE_NAME: postgresql://docker:secret@postgres-primary:5432/postgres?sslmode=disable
-    ports:
-      - "9187:9187"
-    networks:
-      - backend
-    depends_on:
-      - postgres-primary
-    restart: unless-stopped
-
   nginx-exporter:
     image: nginx/nginx-prometheus-exporter:latest
     container_name: search-nginx-exporter
@@ -271,8 +190,7 @@ services:
       - "9113:9113"
     networks:
       - backend
-    depends_on:
-      - nginx
+      - frontend
     restart: unless-stopped
 
 networks:
@@ -280,10 +198,10 @@ networks:
     driver: bridge
   backend:
     driver: bridge
+  pg_auto_default:
+    external: true
 
 volumes:
-  postgres-primary-data:
-  postgres-standby-data:
   valkey-data:
   rabbitmq-data:
   prometheus-data:

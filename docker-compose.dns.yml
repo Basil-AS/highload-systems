@@ -1,0 +1,81 @@
+# docker-compose для DNS-балансировки (симуляция Round Robin DNS)
+services:
+  dnsmasq:
+    build: ./dns
+    container_name: search-dnsmasq
+    ports:
+      - "5353:5353/udp"
+    volumes:
+      - ./dns/dnsmasq.conf:/etc/dnsmasq.conf:ro
+      - dns-logs:/var/log
+    networks:
+      - frontend
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+
+  # Nginx инстанс 1 (эмулирует дата-центр 1)
+  nginx-dc1:
+    image: nginx:alpine
+    container_name: search-nginx-dc1
+    ports:
+      - "8081:80"
+    volumes:
+      - ./services/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./services/gateway/static:/usr/share/nginx/html:ro
+    networks:
+      frontend:
+        ipv4_address: 172.20.0.10
+      backend:
+    depends_on:
+      - dnsmasq
+    restart: unless-stopped
+
+  # Nginx инстанс 2 (эмулирует дата-центр 2)
+  nginx-dc2:
+    image: nginx:alpine
+    container_name: search-nginx-dc2
+    ports:
+      - "8082:80"
+    volumes:
+      - ./services/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./services/gateway/static:/usr/share/nginx/html:ro
+    networks:
+      frontend:
+        ipv4_address: 172.20.0.11
+      backend:
+    depends_on:
+      - dnsmasq
+    restart: unless-stopped
+
+  # Nginx инстанс 3 (эмулирует дата-центр 3)
+  nginx-dc3:
+    image: nginx:alpine
+    container_name: search-nginx-dc3
+    ports:
+      - "8083:80"
+    volumes:
+      - ./services/gateway/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./services/gateway/static:/usr/share/nginx/html:ro
+    networks:
+      frontend:
+        ipv4_address: 172.20.0.12
+      backend:
+    depends_on:
+      - dnsmasq
+    restart: unless-stopped
+
+networks:
+  frontend:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+  backend:
+    driver: bridge
+
+volumes:
+  dns-logs:

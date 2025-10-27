@@ -1,0 +1,88 @@
+```mermaid
+graph TB
+    subgraph "External"
+        User[👤 User Browser]
+        DNS[🌐 DNS Round Robin]
+    end
+    
+    subgraph "Presentation Tier"
+        Nginx[⚖️ Nginx<br/>Load Balancer<br/>API Gateway]
+        Frontend[📱 Static Frontend<br/>HTML/CSS/JS]
+    end
+    
+    subgraph "Application Tier"
+        US1[🔐 User Service 1]
+        US2[🔐 User Service 2]
+        DS1[📄 Document Service 1]
+        DS2[📄 Document Service 2]
+        SS1[🔍 Search Service 1]
+        SS2[🔍 Search Service 2]
+        SS3[🔍 Search Service 3]
+        IW1[⚙️ Indexer Worker 1]
+        IW2[⚙️ Indexer Worker 2]
+        IW3[⚙️ Indexer Worker 3]
+        Audit[📋 Audit Service]
+    end
+    
+    subgraph "Data Tier"
+        PGPrimary[(🗄️ PostgreSQL<br/>Primary)]
+        PGStandby[(🗄️ PostgreSQL<br/>Standby)]
+        ValKey[(💾 ValKey<br/>Cache)]
+        RabbitMQ[📬 RabbitMQ<br/>Queue]
+    end
+    
+    subgraph "Monitoring"
+        Prometheus[📊 Prometheus]
+        Grafana[📈 Grafana]
+    end
+    
+    User --> DNS
+    DNS --> Nginx
+    Nginx --> Frontend
+    Nginx --> US1 & US2
+    Nginx --> DS1 & DS2
+    Nginx --> SS1 & SS2 & SS3
+    
+    US1 & US2 --> PGPrimary
+    US1 & US2 --> ValKey
+    
+    DS1 & DS2 --> PGPrimary
+    DS1 & DS2 --> RabbitMQ
+    
+    SS1 & SS2 & SS3 --> PGStandby
+    SS1 & SS2 & SS3 --> ValKey
+    
+    RabbitMQ --> IW1 & IW2 & IW3
+    IW1 & IW2 & IW3 --> PGPrimary
+    IW1 & IW2 & IW3 --> ValKey
+    
+    US1 & US2 & DS1 & DS2 --> Audit
+    Audit --> PGPrimary
+    
+    PGPrimary -.replicate.-> PGStandby
+    
+    Prometheus --> US1 & US2 & DS1 & DS2 & SS1 & SS2 & SS3 & Audit
+    Prometheus --> PGPrimary & ValKey & Nginx
+    Grafana --> Prometheus
+    
+    style User fill:#e1f5ff
+    style Nginx fill:#ff9800
+    style Frontend fill:#4caf50
+    style US1 fill:#2196f3
+    style US2 fill:#2196f3
+    style DS1 fill:#9c27b0
+    style DS2 fill:#9c27b0
+    style SS1 fill:#f44336
+    style SS2 fill:#f44336
+    style SS3 fill:#f44336
+    style IW1 fill:#795548
+    style IW2 fill:#795548
+    style IW3 fill:#795548
+    style Audit fill:#00bcd4
+    style PGPrimary fill:#4caf50
+    style PGStandby fill:#8bc34a
+    style ValKey fill:#ff5722
+    style RabbitMQ fill:#ff9800
+    style Prometheus fill:#e91e63
+    style Grafana fill:#673ab7
+```

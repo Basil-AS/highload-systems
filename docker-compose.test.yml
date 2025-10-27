@@ -1,0 +1,189 @@
+services:
+  # PostgreSQL Primary
+  postgres-primary:
+    image: postgres:16-alpine
+    container_name: search-postgres-primary
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/init-scripts:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ValKey (Redis)
+  valkey:
+    image: valkey/valkey:7-alpine
+    container_name: search-valkey
+    ports:
+      - "6379:6379"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # RabbitMQ
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: search-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # User Service
+  user-service:
+    build: ./services/user-service
+    container_name: search-user-service
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres-primary:5432/users_db
+      REDIS_URL: redis://valkey:6379/0
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    networks:
+      - backend
+
+  # Document Service
+  document-service:
+    build: ./services/document-service
+    container_name: search-document-service
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres-primary:5432/documents_db
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - backend
+
+  # Search Service
+  search-service:
+    build: ./services/search-service
+    container_name: search-search-service
+    environment:
+      DATABASE_URL_READ: postgresql://postgres:postgres@postgres-primary:5432/search_db
+      DATABASE_URL_WRITE: postgresql://postgres:postgres@postgres-primary:5432/search_db
+      VALKEY_URL: redis://valkey:6379/1
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    networks:
+      - backend
+
+  # Indexer Worker
+  indexer-worker:
+    build: ./services/indexer-worker
+    container_name: search-indexer-worker
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres-primary:5432/search_db
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
+      REDIS_URL: redis://valkey:6379/1
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - backend
+
+  # Audit Service
+  audit-service:
+    build: ./services/audit-service
+    container_name: search-audit-service
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres-primary:5432/audit_db
+    depends_on:
+      postgres-primary:
+        condition: service_healthy
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Nginx Gateway
+  nginx:
+    build: ./services/gateway
+    container_name: search-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - user-service
+      - document-service
+      - search-service
+      - audit-service
+    networks:
+      - frontend
+      - backend
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: search-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - backend
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: search-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - backend
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  prometheus-data:
+  grafana-data:

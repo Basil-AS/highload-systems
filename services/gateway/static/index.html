@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Поисковая система - ЛР4</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 Поисковая система</h1>
+            <p class="subtitle">ЛР4 - Вариант 8 - Высоконагруженные системы</p>
+            <div class="auth-buttons" id="authButtons">
+                <button onclick="showLogin()">Войти</button>
+                <button onclick="showRegister()">Регистрация</button>
+            </div>
+            <div class="user-info" id="userInfo" style="display: none;">
+                <span id="username"></span>
+                <button onclick="logout()">Выйти</button>
+            </div>
+        </header>
+
+        <main>
+            <!-- Search Section -->
+            <section id="searchSection">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="Введите поисковый запрос..." />
+                    <button onclick="search()">Искать</button>
+                </div>
+                
+                <div id="searchResults"></div>
+            </section>
+
+            <!-- Documents Management -->
+            <section id="documentsSection">
+                <h2>Управление документами</h2>
+                <div class="document-form">
+                    <h3>Добавить документ</h3>
+                    <input type="text" id="docTitle" placeholder="Заголовок документа" />
+                    <textarea id="docContent" placeholder="Содержание документа..." rows="5"></textarea>
+                    <input type="text" id="docAuthor" placeholder="Автор (опционально)" />
+                    <button onclick="createDocument()">Создать документ</button>
+                </div>
+                
+                <div class="documents-list">
+                    <h3>Список документов</h3>
+                    <button onclick="loadDocuments()">Обновить список</button>
+                    <div id="documentsList"></div>
+                </div>
+            </section>
+
+            <!-- Login Modal -->
+            <div id="loginModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal('loginModal')">&times;</span>
+                    <h2>Вход</h2>
+                    <input type="text" id="loginUsername" placeholder="Имя пользователя" />
+                    <input type="password" id="loginPassword" placeholder="Пароль" />
+                    <button onclick="login()">Войти</button>
+                    <div id="loginError" class="error"></div>
+                </div>
+            </div>
+
+            <!-- Register Modal -->
+            <div id="registerModal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close" onclick="closeModal('registerModal')">&times;</span>
+                    <h2>Регистрация</h2>
+                    <input type="email" id="regEmail" placeholder="Email" />
+                    <input type="text" id="regUsername" placeholder="Имя пользователя" />
+                    <input type="password" id="regPassword" placeholder="Пароль (минимум 6 символов)" />
+                    <input type="text" id="regFullname" placeholder="Полное имя (опционально)" />
+                    <button onclick="register()">Зарегистрироваться</button>
+                    <div id="registerError" class="error"></div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Скрыпник Василий Александрович | Группа 211-331 | 2025</p>
+            <p>Архитектура: Nginx + FastAPI + PostgreSQL + ValKey + RabbitMQ</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

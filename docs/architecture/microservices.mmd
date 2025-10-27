@@ -1,0 +1,76 @@
+```mermaid
+sequenceDiagram
+    participant Client as 👤 Client
+    participant Nginx as ⚖️ Nginx
+    participant UserSvc as 🔐 User Service
+    participant DocSvc as 📄 Document Service
+    participant SearchSvc as 🔍 Search Service
+    participant Queue as 📬 RabbitMQ
+    participant Indexer as ⚙️ Indexer Worker
+    participant Cache as 💾 ValKey
+    participant DB as 🗄️ PostgreSQL
+    participant Audit as 📋 Audit Service
+
+    Note over Client,Audit: 1. User Registration & Authentication
+    Client->>+Nginx: POST /api/users/register
+    Nginx->>+UserSvc: Forward request
+    UserSvc->>+DB: INSERT INTO users
+    DB-->>-UserSvc: User created
+    UserSvc->>Audit: Emit "user.created" event
+    UserSvc-->>-Nginx: 201 Created + JWT token
+    Nginx-->>-Client: Response
+
+    Note over Client,Audit: 2. Upload Document
+    Client->>+Nginx: POST /api/documents (+ JWT)
+    Nginx->>+DocSvc: Forward request
+    DocSvc->>UserSvc: Validate JWT token
+    UserSvc-->>DocSvc: Token valid
+    DocSvc->>+DB: INSERT INTO documents
+    DB-->>-DocSvc: Document created
+    DocSvc->>Queue: Publish indexing task
+    Queue-->>DocSvc: Task queued
+    DocSvc->>Audit: Emit "document.created" event
+    DocSvc-->>-Nginx: 201 Created
+    Nginx-->>-Client: Document uploaded
+
+    Note over Client,Audit: 3. Asynchronous Indexing
+    Queue->>+Indexer: Consume indexing task
+    Indexer->>DB: SELECT document content
+    DB-->>Indexer: Document data
+    Indexer->>Indexer: Tokenize & compute TF-IDF
+    Indexer->>+DB: INSERT INTO terms, postings
+    DB-->>-Indexer: Index updated
+    Indexer->>Cache: Invalidate search cache
+    Cache-->>Indexer: Cache cleared
+    Indexer-->>-Queue: ACK task
+
+    Note over Client,Audit: 4. Search Query (Cache MISS)
+    Client->>+Nginx: GET /api/search?q=test
+    Nginx->>+SearchSvc: Forward request
+    SearchSvc->>+Cache: GET cache_key
+    Cache-->>-SearchSvc: MISS
+    SearchSvc->>+DB: SELECT from terms, postings (Standby)
+    DB-->>-SearchSvc: Search results
+    SearchSvc->>+Cache: SET cache_key (TTL 5min)
+    Cache-->>-SearchSvc: Cached
+    SearchSvc->>Audit: Emit "search.executed" event
+    SearchSvc-->>-Nginx: 200 OK + results
+    Nginx-->>-Client: Search results
+
+    Note over Client,Audit: 5. Search Query (Cache HIT)
+    Client->>+Nginx: GET /api/search?q=test
+    Nginx->>+SearchSvc: Forward request
+    SearchSvc->>+Cache: GET cache_key
+    Cache-->>-SearchSvc: HIT (cached results)
+    SearchSvc-->>-Nginx: 200 OK + results (X-Cache: HIT)
+    Nginx-->>-Client: Fast response
+
+    Note over Client,Audit: 6. Event Sourcing - Replay
+    Client->>+Nginx: GET /audit/replay/document/{id}
+    Nginx->>+Audit: Forward request
+    Audit->>+DB: SELECT * FROM events WHERE aggregate_id
+    DB-->>-Audit: All events (created, updated, deleted)
+    Audit->>Audit: Replay events to build state
+    Audit-->>-Nginx: Current state reconstructed
+    Nginx-->>-Client: Document state at any point in time
+```

@@ -1,0 +1,83 @@
+{
+  "dashboard": {
+    "title": "Services Overview - ЛР4 Вариант 8",
+    "tags": ["lr4", "services", "canary"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Request Rate by Service",
+        "type": "graph",
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "rate(user_service_requests_total[5m])",
+            "legendFormat": "User Service - {{version}}"
+          },
+          {
+            "expr": "rate(document_service_requests_total[5m])",
+            "legendFormat": "Document Service"
+          },
+          {
+            "expr": "rate(search_service_requests_total[5m])",
+            "legendFormat": "Search Service"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}
+      },
+      {
+        "id": 2,
+        "title": "Response Time (p95)",
+        "type": "graph",
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(user_service_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "User Service p95"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(search_service_request_duration_seconds_bucket[5m]))",
+            "legendFormat": "Search Service p95"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}
+      },
+      {
+        "id": 3,
+        "title": "Canary Traffic Distribution",
+        "type": "piechart",
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "sum(rate(user_service_requests_total{version=\"v1\"}[5m]))",
+            "legendFormat": "V1"
+          },
+          {
+            "expr": "sum(rate(user_service_requests_total{version=\"v2\"}[5m]))",
+            "legendFormat": "V2"
+          }
+        ],
+        "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8}
+      },
+      {
+        "id": 4,
+        "title": "Error Rate",
+        "type": "graph",
+        "datasource": "Prometheus",
+        "targets": [
+          {
+            "expr": "rate(user_service_requests_total{status=\"error\"}[5m])",
+            "legendFormat": "User Service Errors"
+          },
+          {
+            "expr": "rate(document_service_requests_total{status=\"error\"}[5m])",
+            "legendFormat": "Document Service Errors"
+          }
+        ],
+        "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8}
+      }
+    ],
+    "schemaVersion": 16,
+    "version": 1
+  }
+}

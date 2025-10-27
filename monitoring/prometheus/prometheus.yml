@@ -21,19 +21,19 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  # PostgreSQL metrics
-  - job_name: 'postgres'
-    static_configs:
-      - targets: ['postgres-exporter:9187']
-        labels:
-          service: 'postgresql'
+  # PostgreSQL metrics (exporter not deployed)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  #       labels:
+  #         service: 'postgresql'
 
-  # ValKey (Redis) metrics
-  - job_name: 'valkey'
-    static_configs:
-      - targets: ['redis-exporter:9121']
-        labels:
-          service: 'valkey'
+  # ValKey (Redis) metrics (exporter not deployed)
+  # - job_name: 'valkey'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #       labels:
+  #         service: 'valkey'
 
   # Nginx metrics
   - job_name: 'nginx'

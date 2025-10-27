@@ -24,7 +24,7 @@ services:
       dockerfile: Dockerfile
     container_name: search-user-service-v1
     environment:
-      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
+      DATABASE_URL: postgresql://docker:secret@pgauto-node1:5432/app_db
       VALKEY_URL: redis://valkey:6379/0
       AUDIT_SERVICE_URL: http://audit-service:8000
       VERSION: "v1"
@@ -40,7 +40,7 @@ services:
       dockerfile: Dockerfile
     container_name: search-user-service-v2
     environment:
-      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
+      DATABASE_URL: postgresql://docker:secret@pgauto-node1:5432/app_db
       VALKEY_URL: redis://valkey:6379/0
       AUDIT_SERVICE_URL: http://audit-service:8000
       VERSION: "v2"
@@ -53,7 +53,7 @@ services:
     build: ./services/document-service
     container_name: search-document-service
     environment:
-      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
+      DATABASE_URL: postgresql://docker:secret@pgauto-node1:5432/app_db
       RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
       AUDIT_SERVICE_URL: http://audit-service:8000
     networks:
@@ -65,7 +65,7 @@ services:
     build: ./services/search-service
     container_name: search-search-service
     environment:
-      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
+      DATABASE_URL: postgresql://docker:secret@pgauto-node1:5432/app_db
       VALKEY_URL: redis://valkey:6379/1
     networks:
       - backend
@@ -76,7 +76,7 @@ services:
     build: ./services/indexer-service
     container_name: search-indexer-worker
     environment:
-      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
+      DATABASE_URL: postgresql://docker:secret@pgauto-node1:5432/app_db
       RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
       VALKEY_URL: redis://valkey:6379/1
     networks:
@@ -88,7 +88,7 @@ services:
     build: ./services/audit-service
     container_name: search-audit-service
     environment:
-      DATABASE_URL: postgresql://docker:secret@pgauto-node2:5432/app_db
+      DATABASE_URL: postgresql://docker:secret@pgauto-node1:5432/app_db
       RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672/
     networks:
       - backend

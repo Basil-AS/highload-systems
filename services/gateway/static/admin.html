@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель - Поисковая система</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 40px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px 40px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            color: #667eea;
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .stat-card p {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+
+        .actions {
+            padding: 30px 40px;
+            background: white;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .actions h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 1em;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 193, 7, 0.4);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(23, 162, 184, 0.4);
+        }
+
+        .section {
+            padding: 30px 40px;
+        }
+
+        .section h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .documents-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .document-card {
+            background: #f8f9fa;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .document-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .document-card .content {
+            color: #6c757d;
+            margin-bottom: 10px;
+            line-height: 1.6;
+        }
+
+        .document-card .meta {
+            font-size: 0.85em;
+            color: #999;
+            margin-bottom: 10px;
+        }
+
+        .document-card .actions {
+            padding: 0;
+            border: none;
+            display: flex;
+            gap: 10px;
+        }
+
+        .document-card button {
+            padding: 8px 16px;
+            font-size: 0.9em;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .badge-indexed {
+            background: #28a745;
+            color: white;
+        }
+
+        .badge-pending {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .loading {
+            text-align: center;
+            color: #667eea;
+            padding: 20px;
+            font-size: 1.1em;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .success {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        footer {
+            background: #f8f9fa;
+            padding: 20px 40px;
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚙️ Админ-панель</h1>
+            <p class="subtitle">Управление документами поисковой системы | ЛР4 Вариант 8</p>
+        </header>
+
+        <div class="stats">
+            <div class="stat-card">
+                <h3 id="totalDocs">0</h3>
+                <p>Всего документов</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="indexedDocs">0</h3>
+                <p>Проиндексировано</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="pendingDocs">0</h3>
+                <p>Ожидает индексации</p>
+            </div>
+            <div class="stat-card">
+                <h3 id="totalUsers">-</h3>
+                <p>Пользователей</p>
+            </div>
+        </div>
+
+        <div class="actions">
+            <h2>Быстрые действия</h2>
+            <div class="button-group">
+                <button class="btn-success" onclick="loadDocuments()">🔄 Обновить данные</button>
+                <button class="btn-primary" onclick="populateDemoData()">📦 Заполнить демо-данными</button>
+                <button class="btn-warning" onclick="reindexAll()">🔍 Переиндексировать все</button>
+                <button class="btn-danger" onclick="clearAllData()">🗑️ Очистить все данные</button>
+                <button class="btn-info" onclick="window.open('http://localhost:3000', '_blank')">📊 Grafana</button>
+                <button class="btn-info" onclick="window.open('http://localhost:9090', '_blank')">📈 Prometheus</button>
+                <button class="btn-info" onclick="window.open('http://localhost:15672', '_blank')">🐰 RabbitMQ</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>➕ Добавить новый документ</h2>
+            <div id="addMessage"></div>
+            <div class="form-group">
+                <label>Заголовок:</label>
+                <input type="text" id="newTitle" placeholder="Введите заголовок документа">
+            </div>
+            <div class="form-group">
+                <label>Содержание:</label>
+                <textarea id="newContent" placeholder="Введите содержание документа"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Автор (опционально):</label>
+                <input type="text" id="newAuthor" placeholder="Имя автора">
+            </div>
+            <button class="btn-primary" onclick="createDocument()">Создать документ</button>
+        </div>
+
+        <div class="section">
+            <h2>📄 Список всех документов</h2>
+            <div id="documentsList" class="documents-list">
+                <p class="loading">Загрузка...</p>
+            </div>
+        </div>
+
+        <footer>
+            <p>Скрыпник Василий Александрович | Группа 211-331 | 2025</p>
+            <p>Админ-панель для управления высоконагруженной поисковой системой</p>
+        </footer>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost';
+
+        // Загрузка данных при старте
+        loadDocuments();
+
+        async function loadDocuments() {
+            const listDiv = document.getElementById('documentsList');
+            listDiv.innerHTML = '<p class="loading">Загрузка...</p>';
+
+            try {
+                const response = await fetch(`${API_BASE}/api/documents?limit=100`);
+                if (response.ok) {
+                    const docs = await response.json();
+                    displayDocuments(docs);
+                    updateStats(docs);
+                } else {
+                    listDiv.innerHTML = '<p class="error">Ошибка загрузки документов</p>';
+                }
+            } catch (err) {
+                listDiv.innerHTML = '<p class="error">Ошибка соединения с сервером</p>';
+                console.error(err);
+            }
+        }
+
+        function displayDocuments(docs) {
+            const listDiv = document.getElementById('documentsList');
+            
+            if (docs.length === 0) {
+                listDiv.innerHTML = '<p class="loading">📭 Нет документов. Используйте "Заполнить демо-данными"</p>';
+                return;
+            }
+
+            let html = '';
+            docs.forEach(doc => {
+                const badge = doc.indexed 
+                    ? '<span class="badge badge-indexed">✓ Индексирован</span>'
+                    : '<span class="badge badge-pending">⏳ Ожидает</span>';
+                
+                html += `
+                    <div class="document-card">
+                        <h3>${escapeHtml(doc.title)} ${badge}</h3>
+                        <div class="content">${escapeHtml(doc.content.substring(0, 200))}${doc.content.length > 200 ? '...' : ''}</div>
+                        <div class="meta">
+                            ID: ${doc.id} | 
+                            Автор: ${escapeHtml(doc.author || 'Не указан')} | 
+                            Создано: ${new Date(doc.created_at).toLocaleString('ru-RU')}
+                        </div>
+                        <div class="actions">
+                            <button class="btn-danger" onclick="deleteDocument(${doc.id})">🗑️ Удалить</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            listDiv.innerHTML = html;
+        }
+
+        function updateStats(docs) {
+            document.getElementById('totalDocs').textContent = docs.length;
+            document.getElementById('indexedDocs').textContent = docs.filter(d => d.indexed).length;
+            document.getElementById('pendingDocs').textContent = docs.filter(d => !d.indexed).length;
+        }
+
+        async function createDocument() {
+            const title = document.getElementById('newTitle').value.trim();
+            const content = document.getElementById('newContent').value.trim();
+            const author = document.getElementById('newAuthor').value.trim();
+            const msgDiv = document.getElementById('addMessage');
+
+            if (!title || !content) {
+                msgDiv.innerHTML = '<p class="error">Заполните заголовок и содержание</p>';
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/documents`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title, content, author: author || null})
+                });
+
+                if (response.ok) {
+                    msgDiv.innerHTML = '<p class="success">✓ Документ успешно создан!</p>';
+                    document.getElementById('newTitle').value = '';
+                    document.getElementById('newContent').value = '';
+                    document.getElementById('newAuthor').value = '';
+                    setTimeout(() => msgDiv.innerHTML = '', 3000);
+                    loadDocuments();
+                } else {
+                    const error = await response.text();
+                    msgDiv.innerHTML = `<p class="error">Ошибка создания: ${error}</p>`;
+                }
+            } catch (err) {
+                msgDiv.innerHTML = '<p class="error">Ошибка соединения с сервером</p>';
+            }
+        }
+
+        async function deleteDocument(id) {
+            if (!confirm(`Удалить документ #${id}?`)) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/documents/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    loadDocuments();
+                } else {
+                    alert('Ошибка удаления документа');
+                }
+            } catch (err) {
+                alert('Ошибка соединения с сервером');
+            }
+        }
+
+        async function populateDemoData() {
+            if (!confirm('Заполнить систему демо-данными? (15 документов)')) return;
+
+            const demoData = [
+                {title: "Введение в высоконагруженные системы", content: "Высоконагруженные системы - это системы, которые должны обрабатывать большое количество запросов в единицу времени. Основные принципы: масштабируемость, отказоустойчивость, производительность.", author: "Василий Скрыпник"},
+                {title: "PostgreSQL и репликация", content: "PostgreSQL поддерживает различные методы репликации: потоковая репликация, логическая репликация, pg_auto_failover для автоматического переключения при отказе.", author: "Database Expert"},
+                {title: "RabbitMQ и очереди сообщений", content: "RabbitMQ - это брокер сообщений, который реализует протокол AMQP. Используется для асинхронной обработки задач, event sourcing и межсервисного взаимодействия.", author: "Message Queue Specialist"},
+                {title: "Nginx как API Gateway", content: "Nginx может выступать в роли API Gateway, обеспечивая load balancing, rate limiting, кеширование и SSL termination. Поддерживает Canary Deployment через split_clients.", author: "DevOps Engineer"},
+                {title: "Prometheus и мониторинг метрик", content: "Prometheus - это система мониторинга с временными рядами. Собирает метрики по модели pull, поддерживает PromQL для запросов и AlertManager для уведомлений.", author: "SRE Specialist"},
+                {title: "Grafana визуализация данных", content: "Grafana - платформа для визуализации метрик из различных источников: Prometheus, InfluxDB, Elasticsearch. Поддерживает создание интерактивных дашбордов.", author: "Monitoring Team"},
+                {title: "Canary Deployment стратегия", content: "Canary Deployment позволяет постепенно раскатывать новую версию сервиса, направляя на неё небольшой процент трафика (например 20%). Это снижает риски при развертывании.", author: "Release Manager"},
+                {title: "Event Sourcing архитектурный паттерн", content: "Event Sourcing - это подход, при котором состояние системы определяется последовательностью событий. Все изменения сохраняются как события, что обеспечивает полный audit trail.", author: "Software Architect"},
+                {title: "DNS Round Robin балансировка", content: "DNS Round Robin - простой метод балансировки нагрузки на уровне DNS. Сервер возвращает список IP-адресов в циклическом порядке, распределяя трафик между серверами.", author: "Network Engineer"},
+                {title: "Партицирование в PostgreSQL", content: "Партицирование (Partitioning) - это разделение больших таблиц на меньшие физические части. Улучшает производительность запросов и упрощает управление данными.", author: "Database Administrator"},
+                {title: "Валидация данных в FastAPI", content: "FastAPI использует Pydantic для автоматической валидации данных. Это обеспечивает type safety, автоматическую генерацию OpenAPI схем и понятные сообщения об ошибках.", author: "Backend Developer"},
+                {title: "Асинхронное программирование в Python", content: "AsyncIO в Python позволяет писать конкурентный код с помощью async/await. Это особенно эффективно для I/O-bound операций, таких как работа с базой данных и HTTP запросы.", author: "Python Developer"},
+                {title: "Docker и контейнеризация", content: "Docker позволяет упаковывать приложения в контейнеры, обеспечивая изолированное окружение и воспроизводимость. Docker Compose упрощает управление multi-container приложениями.", author: "DevOps Team"},
+                {title: "Rate Limiting защита от перегрузки", content: "Rate Limiting ограничивает количество запросов от клиента за единицу времени. Nginx реализует это через ngx_http_limit_req_module, защищая backend от DDoS атак.", author: "Security Engineer"},
+                {title: "Кеширование в высоконагруженных системах", content: "Кеширование - ключевая техника оптимизации. Nginx может кешировать ответы API, Redis/Valkey используется для сессий, а PostgreSQL имеет встроенный кеш запросов.", author: "Performance Engineer"}
+            ];
+
+            let created = 0;
+            for (const doc of demoData) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/documents`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(doc)
+                    });
+                    if (response.ok) created++;
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                } catch (err) {
+                    console.error('Error creating doc:', err);
+                }
+            }
+
+            alert(`✓ Создано ${created} из ${demoData.length} документов`);
+            loadDocuments();
+        }
+
+        async function reindexAll() {
+            if (!confirm('Переиндексировать все документы?')) return;
+            alert('Функция в разработке. Indexer-service обработает документы автоматически.');
+        }
+
+        async function clearAllData() {
+            if (!confirm('⚠️ УДАЛИТЬ ВСЕ ДОКУМЕНТЫ? Это действие необратимо!')) return;
+            if (!confirm('Вы уверены? Все данные будут потеряны!')) return;
+
+            alert('Функция очистки БД требует прямого доступа. Используйте SQL команды или пересоздайте контейнеры.');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

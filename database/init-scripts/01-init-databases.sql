@@ -1,21 +1,17 @@
--- Инициализация баз данных для всех микросервисов
--- Схемы таблиц создаются в 02-create-schemas.sql
+-- Мы создаём базы для сервисов.
+-- Схемы добавим позже в 02-create-schemas.sql.
 
--- База данных для User Service
+-- Мы создаём базу user-сервиса.
 CREATE DATABASE users_db;
 
--- База данных для Document Service
+-- Мы создаём базу document-сервиса.
 CREATE DATABASE documents_db;
 
--- База данных для Search Service (инвертированный индекс)
+-- Мы создаём базу search-сервиса.
 CREATE DATABASE search_db;
 
--- База данных для Audit Service (Event Sourcing)
+-- Мы создаём базу аудит-сервиса.
 CREATE DATABASE audit_db;
 
--- Вывод информации
-\echo 'Databases created:'
-\echo '  - users_db: User Service data'
-\echo '  - documents_db: Document Service data'
-\echo '  - search_db: Search Service inverted index'
-\echo '  - audit_db: Audit Service event store with partitioning'
+-- Мы выводим подсказку в консоль.
+\echo 'Создали базы: users_db, documents_db, search_db, audit_db'

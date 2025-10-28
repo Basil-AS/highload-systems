@@ -1,5 +1,5 @@
 """
-Search Service - полнотекстовый поиск по документам
+Сервис поиска. Мы отвечаем за полнотекстовые запросы.
 """
 import os
 import json
@@ -15,37 +15,31 @@ import redis.asyncio as aioredis
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
 
-# =====================================================
-# Configuration
-# =====================================================
+# Мы задаём настройки подключения
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://docker:secret@localhost:5432/app_db")
 VALKEY_URL = os.getenv("VALKEY_URL", "redis://localhost:6379/1")
-CACHE_TTL = 300  # 5 minutes
+CACHE_TTL = 300  # мы держим кеш 5 минут
 
-# =====================================================
-# Prometheus metrics
-# =====================================================
+# Мы объявляем метрики Prometheus
 REQUEST_COUNT = Counter('search_service_requests_total', 'Total requests', ['method', 'endpoint', 'status'])
 REQUEST_LATENCY = Histogram('search_service_request_duration_seconds', 'Request latency', ['method', 'endpoint'])
 CACHE_HIT = Counter('search_cache_hits_total', 'Cache hits')
 CACHE_MISS = Counter('search_cache_misses_total', 'Cache misses')
 SEARCH_RESULTS = Histogram('search_results_count', 'Number of search results')
 
-# =====================================================
-# Global connections
-# =====================================================
+# Мы держим глобальные подключения
 db_pool: Optional[asyncpg.Pool] = None
 redis_client: Optional[aioredis.Redis] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifecycle manager"""
+    """Мы поднимаем подключения и закрываем их."""
     global db_pool, redis_client
     
-    # Database pool
+    # Мы создаём пул соединений
     db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=5, max_size=20)
     
-    # Create tables and index structures
+    # Мы создаём таблицы и индексы
     async with db_pool.acquire() as conn:
         await conn.execute("""
             -- Таблица терминов (слов)
@@ -76,7 +70,7 @@ async def lifespan(app: FastAPI):
             );
         """)
     
-    # Redis connection
+    # Мы подключаемся к ValKey
     redis_client = await aioredis.from_url(VALKEY_URL, decode_responses=True)
     
     yield
@@ -85,9 +79,7 @@ async def lifespan(app: FastAPI):
     await db_pool.close()
     await redis_client.close()
 
-# =====================================================
-# FastAPI app
-# =====================================================
+# Мы создаём приложение FastAPI
 app = FastAPI(
     title="Search Service",
     description="Полнотекстовый поиск по документам (ЛР4, Вариант 8)",
@@ -95,9 +87,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# =====================================================
-# Models
-# =====================================================
+# Мы описываем модели ответов
 class SearchResult(BaseModel):
     doc_id: int
     title: str
@@ -112,24 +102,22 @@ class SearchResponse(BaseModel):
     cached: bool
     query_time_ms: float
 
-# =====================================================
-# Helper functions
-# =====================================================
+# Мы описываем вспомогательные функции
 def generate_cache_key(query: str, limit: int) -> str:
-    """Generate cache key for search query"""
+    """Мы генерируем ключ кеша."""
     key_string = f"search:{query.lower().strip()}:{limit}"
     return hashlib.md5(key_string.encode()).hexdigest()
 
 async def search_in_database(query: str, limit: int) -> List[dict]:
-    """Perform full-text search in PostgreSQL"""
-    # Простой поиск по совпадению слов в заголовке и snippet
-    # В реальности здесь был бы поиск по inverted index через terms/postings
+    """Мы выполняем поиск в базе."""
+    # Мы ищем по совпадению слов в заголовке и сниппете
+    # В реальности тут был бы поиск через inverted index
     search_terms = query.lower().split()
     
     if not search_terms:
         return []
     
-    # Используем PostgreSQL full-text search
+    # Мы используем встроенный full-text search
     async with db_pool.acquire() as conn:
         rows = await conn.fetch(
             """
@@ -152,12 +140,10 @@ async def search_in_database(query: str, limit: int) -> List[dict]:
     
     return [dict(row) for row in rows]
 
-# =====================================================
-# Endpoints
-# =====================================================
+# Мы описываем HTTP-эндпоинты
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Мы подтверждаем что сервис работает."""
     try:
         async with db_pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
@@ -168,7 +154,7 @@ async def health_check():
 
 @app.get("/metrics")
 async def metrics():
-    """Prometheus metrics endpoint"""
+    """Мы отдаём метрики Prometheus."""
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 @app.get("/api/search", response_model=SearchResponse)
@@ -176,13 +162,13 @@ async def search(
     q: str = Query(..., min_length=1, description="Search query"),
     limit: int = Query(10, ge=1, le=100, description="Max results")
 ):
-    """Search documents"""
+    """Мы ищем документы."""
     start_time = datetime.utcnow()
     
     with REQUEST_LATENCY.labels(method="GET", endpoint="/api/search").time():
         cache_key = generate_cache_key(q, limit)
         
-        # Try cache first
+        # Мы сперва пробуем кеш
         try:
             cached_result = await redis_client.get(cache_key)
             if cached_result:
@@ -197,7 +183,7 @@ async def search(
         
         CACHE_MISS.inc()
         
-        # Search in database
+        # Мы ищем в базе
         try:
             results = await search_in_database(q, limit)
             
@@ -222,7 +208,7 @@ async def search(
                 "query_time_ms": (datetime.utcnow() - start_time).total_seconds() * 1000
             }
             
-            # Cache the result
+            # Мы сохраняем результат в кеш
             try:
                 await redis_client.setex(
                     cache_key,
@@ -244,7 +230,7 @@ async def search_suggestions(
     q: str = Query(..., min_length=1, description="Search prefix"),
     limit: int = Query(5, ge=1, le=20)
 ):
-    """Get search suggestions (autocomplete)"""
+    """Мы подсказываем варианты для автодополнения."""
     with REQUEST_LATENCY.labels(method="GET", endpoint="/api/search/suggestions").time():
         try:
             async with db_pool.acquire() as conn:
@@ -268,9 +254,9 @@ async def search_suggestions(
 
 @app.delete("/api/search/cache")
 async def clear_cache():
-    """Clear search cache (admin endpoint)"""
+    """Мы чистим кеш поиска."""
     try:
-        # Delete all keys matching search:*
+        # Мы удаляем все ключи
         cursor = 0
         deleted = 0
         while True:

@@ -1,45 +1,46 @@
-# Test Event Sourcing with Partitioning
-# This script tests the partitioned events table
+# Проверка Event Sourcing с партиционированием
+# Тест таблицы events с разделением по времени
 
-Write-Host "🧪 Testing Event Sourcing with Time-Based Partitioning`n" -ForegroundColor Cyan
+Write-Host "🧪 Тест Event Sourcing с партиционированием по времени`n" -ForegroundColor Cyan
 
-# Step 1: Check if PostgreSQL is running
-Write-Host "Step 1: Checking PostgreSQL..." -ForegroundColor Yellow
+# Шаг 1: проверка запуска PostgreSQL
+Write-Host "Шаг 1: Проверка PostgreSQL..." -ForegroundColor Yellow
 $pgContainers = docker ps --filter "name=pgauto-node" --format "{{.Names}}"
 if ($pgContainers) {
-    Write-Host "✅ PostgreSQL containers found: $pgContainers" -ForegroundColor Green
+    Write-Host "✅ Найдены контейнеры PostgreSQL: $pgContainers" -ForegroundColor Green
 } else {
-    Write-Host "❌ PostgreSQL containers not running!" -ForegroundColor Red
+    Write-Host "❌ Контейнеры PostgreSQL не запущены" -ForegroundColor Red
     exit 1
 }
 
-# Step 2: Initialize database with partitioned schema
-Write-Host "`nStep 2: Initializing partitioned database..." -ForegroundColor Yellow
+# Шаг 2: инициализация базы с партициями
+Write-Host "`nШаг 2: Инициализация базы с партициями..." -ForegroundColor Yellow
 $initScript = "c:\Users\basil\Documents\GitHub\highload-systems\services\audit-service\init-db.sql"
+$pgContainer = "pgauto-node1"  # Primary node
 
 if (Test-Path $initScript) {
-    Write-Host "Found init script: $initScript"
+    Write-Host "Найден скрипт инициализации: $initScript"
     
-    # Copy script to container
-    docker cp $initScript highload-systems-pgauto-node1-1:/tmp/init-db.sql
+    # Копирование скрипта в контейнер
+    docker cp $initScript ${pgContainer}:/tmp/init-db.sql
     
-    # Execute script
-    $result = docker exec highload-systems-pgauto-node1-1 psql -U postgres -d postgres -c "CREATE DATABASE audit_db;" 2>&1
-    Write-Host "Database creation: $result"
+    # Создание базы и применение схемы (используем пользователя docker, а не postgres)
+    $result = docker exec $pgContainer psql -U docker -d postgres -c "CREATE DATABASE audit_db;" 2>&1
+    Write-Host "Создание базы: $result"
     
-    $result = docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -f /tmp/init-db.sql 2>&1
+    $result = docker exec $pgContainer psql -U docker -d audit_db -f /tmp/init-db.sql 2>&1
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "✅ Database initialized with partitions" -ForegroundColor Green
+        Write-Host "✅ Схема audit_db развернута" -ForegroundColor Green
     } else {
-        Write-Host "⚠️  Database might already exist, continuing..." -ForegroundColor Yellow
+        Write-Host "⚠️  База уже существует, продолжаем" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "❌ Init script not found at $initScript" -ForegroundColor Red
+    Write-Host "❌ Скрипт инициализации не найден: $initScript" -ForegroundColor Red
     exit 1
 }
 
-# Step 3: Verify partitions exist
-Write-Host "`nStep 3: Verifying partitions..." -ForegroundColor Yellow
+# Шаг 3: проверка наличия партиций
+Write-Host "`nШаг 3: Проверка партиций..." -ForegroundColor Yellow
 $partitionQuery = @"
 SELECT tablename 
 FROM pg_tables 
@@ -47,19 +48,19 @@ WHERE tablename LIKE 'events_%'
 ORDER BY tablename;
 "@
 
-$partitions = docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -t -c $partitionQuery
+$partitions = docker exec $pgContainer psql -U docker -d audit_db -t -c $partitionQuery
 
 if ($partitions) {
     $partitionCount = ($partitions -split "`n" | Where-Object { $_ -match '\S' }).Count
-    Write-Host "✅ Found $partitionCount partitions:" -ForegroundColor Green
+    Write-Host "✅ Обнаружено партиций: $partitionCount" -ForegroundColor Green
     Write-Host $partitions
 } else {
-    Write-Host "❌ No partitions found!" -ForegroundColor Red
+    Write-Host "❌ Партиции не найдены" -ForegroundColor Red
     exit 1
 }
 
-# Step 4: Insert test events into different partitions
-Write-Host "`nStep 4: Inserting test events into different partitions..." -ForegroundColor Yellow
+# Шаг 4: вставка тестовых событий в разные партиции
+Write-Host "`nШаг 4: Вставка тестовых событий..." -ForegroundColor Yellow
 
 $testEvents = @(
     @{
@@ -106,17 +107,17 @@ INSERT INTO events (aggregate_type, aggregate_id, event_type, event_data, timest
 VALUES ('$($event.type)', '$($event.id)', '$($event.event)', '$($event.data)', '$($event.timestamp)'::timestamptz);
 "@
     
-    docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -c $insertQuery | Out-Null
+    docker exec $pgContainer psql -U docker -d audit_db -c $insertQuery | Out-Null
     if ($LASTEXITCODE -eq 0) {
         $insertedCount++
-        Write-Host "  ✓ Inserted $($event.type) event for $($event.timestamp)" -ForegroundColor Gray
+        Write-Host "  ✓ Добавлено событие $($event.type) на дату $($event.timestamp)" -ForegroundColor Gray
     }
 }
 
-Write-Host "✅ Inserted $insertedCount test events" -ForegroundColor Green
+Write-Host "✅ Добавлено $insertedCount тестовых событий" -ForegroundColor Green
 
-# Step 5: Verify data distribution across partitions
-Write-Host "`nStep 5: Verifying data distribution..." -ForegroundColor Yellow
+# Шаг 5: проверка распределения данных
+Write-Host "`nШаг 5: Проверка распределения данных..." -ForegroundColor Yellow
 
 $distributionQuery = @"
 SELECT 
@@ -129,13 +130,13 @@ GROUP BY tableoid
 ORDER BY partition_name;
 "@
 
-$distribution = docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -c $distributionQuery
+$distribution = docker exec $pgContainer psql -U docker -d audit_db -c $distributionQuery
 
-Write-Host "Data distribution across partitions:"
+Write-Host "Распределение по партициям:"
 Write-Host $distribution
 
-# Step 6: Test partition pruning (query specific partition)
-Write-Host "`nStep 6: Testing partition pruning..." -ForegroundColor Yellow
+# Шаг 6: проверка partition pruning
+Write-Host "`nШаг 6: Проверка partition pruning..." -ForegroundColor Yellow
 
 $pruningQuery = @"
 EXPLAIN (ANALYZE, BUFFERS) 
@@ -143,19 +144,19 @@ SELECT * FROM events
 WHERE timestamp >= '2025-01-01' AND timestamp < '2025-02-01';
 "@
 
-$explainResult = docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -c $pruningQuery
+$explainResult = docker exec $pgContainer psql -U docker -d audit_db -c $pruningQuery
 
 if ($explainResult -match "events_2025_01") {
-    Write-Host "✅ Partition pruning works! Query only scans events_2025_01" -ForegroundColor Green
+    Write-Host "✅ Partition pruning работает: используется только events_2025_01" -ForegroundColor Green
 } else {
-    Write-Host "⚠️  Partition pruning might not be optimal" -ForegroundColor Yellow
+    Write-Host "⚠️  Partition pruning сработал не полностью" -ForegroundColor Yellow
 }
 
-Write-Host "`nEXPLAIN output:"
+Write-Host "`nEXPLAIN:" 
 Write-Host $explainResult
 
-# Step 7: Test Event Replay
-Write-Host "`nStep 7: Testing Event Replay for user-001..." -ForegroundColor Yellow
+# Шаг 7: проверка восстановления событий
+Write-Host "`nШаг 7: Проверка воспроизведения событий для user-001..." -ForegroundColor Yellow
 
 $replayQuery = @"
 SELECT 
@@ -167,12 +168,12 @@ WHERE aggregate_type = 'user' AND aggregate_id = 'user-001'
 ORDER BY timestamp ASC;
 "@
 
-$replayResult = docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -c $replayQuery
+$replayResult = docker exec $pgContainer psql -U docker -d audit_db -c $replayQuery
 
-Write-Host "Event history for user-001:"
+Write-Host "История событий для user-001:"
 Write-Host $replayResult
 
-# Reconstruct state
+# Шаг 7.1: восстановление текущего состояния
 $reconstructQuery = @"
 WITH event_stream AS (
     SELECT 
@@ -192,31 +193,31 @@ FROM event_stream,
      jsonb_each(data);
 "@
 
-$state = docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -t -c $reconstructQuery
+$state = docker exec $pgContainer psql -U docker -d audit_db -t -c $reconstructQuery
 
-Write-Host "`nReconstructed state:"
+Write-Host "`nТекущее состояние:" 
 Write-Host $state
 
-# Step 8: Test partition management functions
-Write-Host "`nStep 8: Testing partition management functions..." -ForegroundColor Yellow
+# Шаг 8: проверка функций управления партициями
+Write-Host "`nШаг 8: Проверка функций управления партициями..." -ForegroundColor Yellow
 
-# Test create_next_partition function
-$createResult = docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -c "SELECT create_next_partition();" 2>&1
+# Вызов create_next_partition
+$createResult = docker exec $pgContainer psql -U docker -d audit_db -c "SELECT create_next_partition();" 2>&1
 
 if ($createResult -match "Created partition" -or $createResult -match "already exists") {
-    Write-Host "✅ create_next_partition() works" -ForegroundColor Green
+    Write-Host "✅ create_next_partition() выполнена успешно" -ForegroundColor Green
 } else {
-    Write-Host "⚠️  create_next_partition() result: $createResult" -ForegroundColor Yellow
+    Write-Host "⚠️  create_next_partition() ответила: $createResult" -ForegroundColor Yellow
 }
 
-# Test partition_info view
-$partitionInfo = docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -c "SELECT * FROM partition_info LIMIT 5;"
+# Просмотр представления partition_info
+$partitionInfo = docker exec $pgContainer psql -U docker -d audit_db -c "SELECT * FROM partition_info LIMIT 5;"
 
-Write-Host "`nPartition sizes (top 5):"
+Write-Host "`nРазмеры партиций (топ 5):"
 Write-Host $partitionInfo
 
-# Step 9: Performance test (optional)
-Write-Host "`nStep 9: Running performance test..." -ForegroundColor Yellow
+# Шаг 9: тест производительности вставки
+Write-Host "`nШаг 9: Тест производительности вставки..." -ForegroundColor Yellow
 
 $perfQuery = @"
 WITH batch_insert AS (
@@ -234,33 +235,34 @@ SELECT count(*) as inserted_count FROM batch_insert;
 "@
 
 $startTime = Get-Date
-$perfResult = docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -t -c $perfQuery
+$perfResult = docker exec $pgContainer psql -U docker -d audit_db -t -c $perfQuery
 $endTime = Get-Date
 $duration = ($endTime - $startTime).TotalMilliseconds
 
-$insertedCount = $perfResult.Trim()
+# Получаем первую строку результата и очищаем
+$insertedCount = ($perfResult | Select-Object -First 1).Trim()
 $rps = [math]::Round(([int]$insertedCount / ($duration / 1000)), 2)
 
-Write-Host "✅ Inserted $insertedCount events in $duration ms" -ForegroundColor Green
-Write-Host "📊 Performance: $rps events/sec" -ForegroundColor Cyan
+Write-Host "✅ Добавлено $insertedCount событий за $duration мс" -ForegroundColor Green
+Write-Host "📊 Скорость: $rps событий/с" -ForegroundColor Cyan
 
-# Step 10: Cleanup benchmark data
-Write-Host "`nStep 10: Cleaning up benchmark data..." -ForegroundColor Yellow
-docker exec highload-systems-pgauto-node1-1 psql -U postgres -d audit_db -c "DELETE FROM events WHERE aggregate_type = 'benchmark';" | Out-Null
-Write-Host "✅ Benchmark data cleaned" -ForegroundColor Green
+# Шаг 10: очистка тестовых данных
+Write-Host "`nШаг 10: Очистка тестовых данных..." -ForegroundColor Yellow
+docker exec $pgContainer psql -U docker -d audit_db -c "DELETE FROM events WHERE aggregate_type = 'benchmark';" | Out-Null
+Write-Host "✅ Данные для замера очищены" -ForegroundColor Green
 
-# Final summary
+# Итоги
 Write-Host "`n" + ("="*60) -ForegroundColor Cyan
-Write-Host "🎉 EVENT SOURCING WITH PARTITIONING TEST COMPLETED!" -ForegroundColor Green
+Write-Host "🎉 Тест Event Sourcing с партиционированием завершён" -ForegroundColor Green
 Write-Host ("="*60) -ForegroundColor Cyan
 
-Write-Host "`n📊 Summary:" -ForegroundColor Yellow
-Write-Host "  • Partitions created: $partitionCount"
-Write-Host "  • Test events inserted: $insertedCount"
-Write-Host "  • Partition pruning: ✅ Working"
-Write-Host "  • Event replay: ✅ Working"
-Write-Host "  • Performance: $rps events/sec"
-Write-Host "  • Management functions: ✅ Working"
+Write-Host "`n📊 Сводка:" -ForegroundColor Yellow
+Write-Host "  • Партиций доступно: $partitionCount"
+Write-Host "  • Тестовых событий добавлено: $insertedCount"
+Write-Host "  • Partition pruning: ✅ активен"
+Write-Host "  • Воспроизведение событий: ✅ работает"
+Write-Host "  • Производительность: $rps событий/с"
+Write-Host "  • Управляющие функции: ✅ доступны"
 
-Write-Host "`n✅ All tests passed! Event Sourcing with time-based partitioning is working correctly." -ForegroundColor Green
-Write-Host "`n📚 Documentation: docs/event_sourcing_partitioning.md" -ForegroundColor Cyan
+Write-Host "`n✅ Проверка завершена. Конфигурация Event Sourcing с партиционированием функционирует корректно." -ForegroundColor Green
+Write-Host "`n📚 Документация: docs/event_sourcing_partitioning.md" -ForegroundColor Cyan

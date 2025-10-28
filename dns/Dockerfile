@@ -1,16 +1,16 @@
 FROM alpine:latest
 
-# Установка dnsmasq
+# Мы ставим dnsmasq
 RUN apk add --no-cache dnsmasq
 
-# Создание директории для логов
+# Мы готовим папку для логов
 RUN mkdir -p /var/log && touch /var/log/dnsmasq.log
 
-# Копирование конфигурации
+# Мы копируем конфиг
 COPY dnsmasq.conf /etc/dnsmasq.conf
 
-# Expose DNS порт
+# Мы открываем порт DNS
 EXPOSE 5353/udp
 
-# Запуск dnsmasq в foreground режиме
+# Мы запускаем dnsmasq в foreground
 CMD ["dnsmasq", "--no-daemon", "--log-facility=/var/log/dnsmasq.log"]

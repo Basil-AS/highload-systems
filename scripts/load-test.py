@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Нагрузочное тестирование поисковой системы
-ЛР4: Высоконагруженные системы
+Нагрузочный тест для поиска.
 """
 
 import asyncio
@@ -13,17 +12,17 @@ import json
 from typing import List, Dict
 from collections import defaultdict
 
-# Тестовые запросы
+# Набор тестовых запросов
 SEARCH_QUERIES = [
-    "test", "document", "search", "index", "data",
-    "system", "architecture", "microservice", "database",
-    "performance", "scalability", "high load"
+    "тест", "документ", "поиск", "индекс", "данные",
+    "система", "архитектура", "микросервис", "база",
+    "производительность", "масштабирование", "нагрузка"
 ]
 
 DOCUMENT_TITLES = [
-    "Test Document", "Sample Data", "Architecture Guide",
-    "Performance Tuning", "Scalability Best Practices",
-    "Microservices Patterns", "Database Design"
+    "Тестовый документ", "Пример данных", "Руководство по архитектуре",
+    "Настройка производительности", "Практики масштабирования",
+    "Шаблоны микросервисов", "Проектирование баз данных"
 ]
 
 class LoadTester:
@@ -35,7 +34,7 @@ class LoadTester:
         self.errors = []
         
     async def search_request(self, session: aiohttp.ClientSession, query: str):
-        """Выполнить поисковый запрос"""
+        """Выполнение поискового запроса."""
         start = time.time()
         try:
             async with session.get(
@@ -52,11 +51,11 @@ class LoadTester:
                 })
                 return True
         except Exception as e:
-            self.errors.append(f"Search error: {str(e)}")
+            self.errors.append(f"Ошибка поиска: {str(e)}")
             return False
     
     async def document_request(self, session: aiohttp.ClientSession, token: str = None):
-        """Создать документ"""
+        """Создание документа."""
         start = time.time()
         try:
             headers = {}
@@ -64,7 +63,7 @@ class LoadTester:
                 headers['Authorization'] = f'Bearer {token}'
             
             title = random.choice(DOCUMENT_TITLES)
-            content = f"Test content for load testing: {random.randint(1000, 9999)}"
+            content = f"Тестовое содержимое для нагрузочного сценария: {random.randint(1000, 9999)}"
             
             async with session.post(
                 f"{self.base_url}/api/documents",
@@ -80,36 +79,36 @@ class LoadTester:
                 })
                 return True
         except Exception as e:
-            self.errors.append(f"Document error: {str(e)}")
+            self.errors.append(f"Ошибка создания документа: {str(e)}")
             return False
     
     async def worker(self, worker_id: int):
-        """Воркер для генерации нагрузки"""
+        """Запуск воркера нагрузки."""
         async with aiohttp.ClientSession() as session:
             requests_per_worker = self.total_requests // self.concurrency
             
             for i in range(requests_per_worker):
-                # 80% поиск, 20% создание документов
+                # 80% запросов на поиск и 20% на создание
                 if random.random() < 0.8:
                     query = random.choice(SEARCH_QUERIES)
                     await self.search_request(session, query)
                 else:
                     await self.document_request(session)
                 
-                # Небольшая задержка для более реалистичной нагрузки
+                # Добавление паузы для реалистичной нагрузки
                 await asyncio.sleep(random.uniform(0.01, 0.1))
     
     async def run(self):
-        """Запустить тест"""
+        """Запуск теста."""
         print(f"\n{'='*60}")
-        print(f"Load Testing: {self.base_url}")
-        print(f"Total Requests: {self.total_requests}")
-        print(f"Concurrency: {self.concurrency}")
+        print(f"Нагрузочное тестирование: {self.base_url}")
+        print(f"Всего запросов: {self.total_requests}")
+        print(f"Параллелизм: {self.concurrency}")
         print(f"{'='*60}\n")
         
         start_time = time.time()
         
-        # Запустить воркеры
+        # Запуск воркеров
         tasks = [self.worker(i) for i in range(self.concurrency)]
         await asyncio.gather(*tasks)
         
@@ -119,21 +118,21 @@ class LoadTester:
         self.print_results(total_time)
     
     def print_results(self, total_time: float):
-        """Вывести результаты"""
+        """Вывод результатов."""
         print(f"\n{'='*60}")
-        print("Results")
+        print("Результаты")
         print(f"{'='*60}\n")
         
         total_requests = sum(len(results) for results in self.results.values())
         
-        print(f"Total Time: {total_time:.2f}s")
-        print(f"Total Requests: {total_requests}")
-        print(f"Requests/sec: {total_requests / total_time:.2f}")
-        print(f"Errors: {len(self.errors)}")
-        print(f"Error Rate: {len(self.errors) / total_requests * 100:.2f}%")
+        print(f"Общее время: {total_time:.2f} c")
+        print(f"Всего запросов: {total_requests}")
+        print(f"Запросов в секунду: {total_requests / total_time:.2f}")
+        print(f"Ошибок: {len(self.errors)}")
+        print(f"Доля ошибок: {len(self.errors) / total_requests * 100:.2f}%")
         print()
         
-        # Статистика по типам запросов
+        # Расчет статистики по типам запросов
         for req_type, results in self.results.items():
             if not results:
                 continue
@@ -141,35 +140,35 @@ class LoadTester:
             durations = [r['duration'] for r in results]
             durations.sort()
             
-            print(f"\n{req_type.upper()} Requests:")
-            print(f"  Count: {len(results)}")
-            print(f"  Min: {min(durations)*1000:.2f}ms")
-            print(f"  Max: {max(durations)*1000:.2f}ms")
-            print(f"  Mean: {sum(durations)/len(durations)*1000:.2f}ms")
-            print(f"  P50: {durations[int(len(durations)*0.5)]*1000:.2f}ms")
-            print(f"  P95: {durations[int(len(durations)*0.95)]*1000:.2f}ms")
-            print(f"  P99: {durations[int(len(durations)*0.99)]*1000:.2f}ms")
+            print(f"\n{req_type.upper()} запросы:")
+            print(f"  Количество: {len(results)}")
+            print(f"  Минимум: {min(durations)*1000:.2f} мс")
+            print(f"  Максимум: {max(durations)*1000:.2f} мс")
+            print(f"  Среднее: {sum(durations)/len(durations)*1000:.2f} мс")
+            print(f"  P50: {durations[int(len(durations)*0.5)]*1000:.2f} мс")
+            print(f"  P95: {durations[int(len(durations)*0.95)]*1000:.2f} мс")
+            print(f"  P99: {durations[int(len(durations)*0.99)]*1000:.2f} мс")
             
-            # Статистика кэша для поиска
+            # Расчет статистики кеша
             if req_type == 'search':
                 cache_hits = sum(1 for r in results if r.get('cache') == 'HIT')
                 cache_misses = sum(1 for r in results if r.get('cache') == 'MISS')
                 hit_rate = cache_hits / (cache_hits + cache_misses) * 100 if (cache_hits + cache_misses) > 0 else 0
-                print(f"  Cache Hit Rate: {hit_rate:.2f}% ({cache_hits} hits, {cache_misses} misses)")
+                print(f"  Доля попаданий кеша: {hit_rate:.2f}% ({cache_hits} попаданий, {cache_misses} промахов)")
         
-        # Показать ошибки
+        # Вывод ошибок
         if self.errors:
-            print(f"\n\nErrors (showing first 10):")
+            print(f"\n\nОшибки (первые 10):")
             for error in self.errors[:10]:
                 print(f"  - {error}")
         
         print(f"\n{'='*60}\n")
 
 def main():
-    parser = argparse.ArgumentParser(description="Load testing для поисковой системы")
-    parser.add_argument("--url", default="http://localhost", help="Base URL (default: http://localhost)")
-    parser.add_argument("--requests", type=int, default=1000, help="Total requests (default: 1000)")
-    parser.add_argument("--concurrency", type=int, default=10, help="Concurrent workers (default: 10)")
+    parser = argparse.ArgumentParser(description="Нагрузочный тест для поисковой системы")
+    parser.add_argument("--url", default="http://localhost", help="Базовый URL (по умолчанию: http://localhost)")
+    parser.add_argument("--requests", type=int, default=1000, help="Количество запросов (по умолчанию: 1000)")
+    parser.add_argument("--concurrency", type=int, default=10, help="Число параллельных воркеров (по умолчанию: 10)")
     
     args = parser.parse_args()
     

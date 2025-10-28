@@ -5,44 +5,44 @@ global:
     cluster: 'search-system-lr4'
     environment: 'production'
 
-# Alerting configuration (optional)
-# alerting:
+# Мы можем подключить alertmanager (пока не используем)
+# alerting (пример):
 #   alertmanagers:
 #     - static_configs:
 #         - targets: ['alertmanager:9093']
 
-# Rule files (for alerting)
-# rule_files:
+# Мы можем подключить правила алертов
+# rule_files (пример):
 #   - "alerts.yml"
 
 scrape_configs:
-  # Prometheus self-monitoring
+  # Мы снимаем метрики самого Prometheus
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 
-  # PostgreSQL metrics (exporter not deployed)
+  # Мы можем добавить экспортёр PostgreSQL
   # - job_name: 'postgres'
   #   static_configs:
   #     - targets: ['postgres-exporter:9187']
   #       labels:
   #         service: 'postgresql'
 
-  # ValKey (Redis) metrics (exporter not deployed)
+  # Мы можем подключить экспортёр ValKey
   # - job_name: 'valkey'
   #   static_configs:
   #     - targets: ['redis-exporter:9121']
   #       labels:
   #         service: 'valkey'
 
-  # Nginx metrics
+  # Мы собираем метрики nginx
   - job_name: 'nginx'
     static_configs:
       - targets: ['nginx-exporter:9113']
         labels:
           service: 'nginx'
 
-  # User Service metrics
+  # Мы собираем метрики user-сервисов
   - job_name: 'user-service'
     static_configs:
       - targets: 
@@ -51,7 +51,7 @@ scrape_configs:
         labels:
           service: 'user-service'
 
-  # Document Service metrics
+  # Мы собираем метрики document-сервиса
   - job_name: 'document-service'
     static_configs:
       - targets:
@@ -59,7 +59,7 @@ scrape_configs:
         labels:
           service: 'document-service'
 
-  # Search Service metrics
+  # Мы собираем метрики search-сервиса
   - job_name: 'search-service'
     static_configs:
       - targets:
@@ -67,14 +67,14 @@ scrape_configs:
         labels:
           service: 'search-service'
 
-  # Audit Service metrics
+  # Мы собираем метрики audit-сервиса
   - job_name: 'audit-service'
     static_configs:
       - targets: ['audit-service:8000']
         labels:
           service: 'audit-service'
 
-  # RabbitMQ metrics (если добавить exporter)
+  # Мы можем добавить экспортёр RabbitMQ
   # - job_name: 'rabbitmq'
   #   static_configs:
   #     - targets: ['rabbitmq-exporter:9419']

@@ -1,108 +1,84 @@
-# DNS Round Robin Балансировка - Тестовый Скрипт
+# Тест DNS Round Robin балансировки
 
-Write-Host "`n╔═══════════════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "║  DNS Round Robin Load Balancing Test                        ║" -ForegroundColor Cyan
-Write-Host "╚═══════════════════════════════════════════════════════════════╝`n" -ForegroundColor Cyan
+Write-Host "`n=== DNS Round Robin Test ===" -ForegroundColor Cyan
 
-Write-Host "Описание теста:" -ForegroundColor Yellow
-Write-Host "  Симулируем DNS-балансировку с помощью dnsmasq" -ForegroundColor White
-Write-Host "  3 инстанса nginx в разных 'дата-центрах'" -ForegroundColor White
-Write-Host "  Round Robin распределение по IP-адресам`n" -ForegroundColor White
-
-# Шаг 1: Проверка запуска dnsmasq
-Write-Host "Шаг 1: Проверка DNS-сервера (dnsmasq)..." -ForegroundColor Yellow
-$dnsmasq = docker ps --format "{{.Names}}" | Select-String -Pattern "dnsmasq"
-if ($dnsmasq) {
-    Write-Host "  ✅ dnsmasq запущен: $dnsmasq" -ForegroundColor Green
-} else {
-    Write-Host "  ⚠️ dnsmasq не запущен. Запускаем..." -ForegroundColor Yellow
-    docker-compose -f docker-compose.dns.yml up -d
+# 1. Запуск контейнеров
+Write-Host "`n1. Проверка контейнеров..."
+$containers = docker ps --format "{{.Names}}" | Select-String "dnsmasq|nginx-dc"
+if ($containers.Count -lt 4) {
+    Write-Host "   Запуск контейнеров..." -ForegroundColor Yellow
+    docker compose -p dns-lab -f docker-compose.dns.yml up -d --build 2>&1 | Out-Null
     Start-Sleep -Seconds 5
 }
+Write-Host "   ✓ Контейнеры запущены" -ForegroundColor Green
 
-# Шаг 2: Проверка nginx инстансов
-Write-Host "`nШаг 2: Проверка nginx инстансов (DC1, DC2, DC3)..." -ForegroundColor Yellow
-$dc1 = docker ps --format "{{.Names}}" | Select-String -Pattern "nginx-dc1"
-$dc2 = docker ps --format "{{.Names}}" | Select-String -Pattern "nginx-dc2"
-$dc3 = docker ps --format "{{.Names}}" | Select-String -Pattern "nginx-dc3"
+# 2. Проверка DNS возвращает все адреса
+Write-Host "`n2. Проверка DNS возвращает все адреса..."
+$dnsResult = docker exec search-dnsmasq nslookup -type=A search.lab 127.0.0.1 2>&1
+$addresses = $dnsResult | Select-String "Address: 172\.30\.0\.\d+$"
 
-if ($dc1 -and $dc2 -and $dc3) {
-    Write-Host "  ✅ DC1 (port 8081): $dc1" -ForegroundColor Green
-    Write-Host "  ✅ DC2 (port 8082): $dc2" -ForegroundColor Green
-    Write-Host "  ✅ DC3 (port 8083): $dc3" -ForegroundColor Green
+if ($addresses.Count -eq 3) {
+    Write-Host "   ✓ DNS возвращает 3 адреса" -ForegroundColor Green
+    $addresses | ForEach-Object { Write-Host "     $($_.Line.Trim())" -ForegroundColor Gray }
 } else {
-    Write-Host "  ⚠️ Не все инстансы запущены" -ForegroundColor Yellow
+    Write-Host "   ✗ DNS вернул $($addresses.Count) адресов (ожидалось 3)" -ForegroundColor Red
+    exit 1
 }
 
-# Шаг 3: Тестирование DNS резолвинга
-Write-Host "`nШаг 3: Тестирование DNS резолвинга (nslookup)..." -ForegroundColor Yellow
-
-Write-Host "  Запрос: search.local @ 127.0.0.1:5353" -ForegroundColor Cyan
-$dnsResult = nslookup search.local 127.0.0.1 2>&1 | Out-String
-if ($dnsResult -match "127\.0\.0\.(1|2|3)") {
-    Write-Host "  ✅ DNS резолвинг работает" -ForegroundColor Green
-    Write-Host ($dnsResult | Select-String -Pattern "Address:.*127\.0\.0\.\d+") -ForegroundColor White
-} else {
-    Write-Host "  ⚠️ DNS не отвечает корректно" -ForegroundColor Yellow
+# 3. Проверка Round Robin ротации
+Write-Host "`n3. Проверка Round Robin ротации порядка..."
+$firstIPs = @()
+1..5 | ForEach-Object {
+    $result = docker exec search-dnsmasq nslookup search.lab 127.0.0.1 2>&1
+    $firstIP = ($result | Select-String "^Address: 172\.30\.0\.\d+$" | Select-Object -First 1).Line -replace "Address:\s*", ""
+    $firstIPs += $firstIP
 }
 
-# Шаг 4: Тестирование балансировки (множественные запросы)
-Write-Host "`nШаг 4: Тестирование Round Robin распределения..." -ForegroundColor Yellow
-Write-Host "  Отправляем 30 запросов к разным инстансам nginx`n" -ForegroundColor White
+$uniqueFirstIPs = $firstIPs | Select-Object -Unique
+if ($uniqueFirstIPs.Count -ge 2) {
+    Write-Host "   ✓ Порядок IP меняется (Round Robin работает)" -ForegroundColor Green
+    Write-Host "   Первые IP в 5 запросах: $($firstIPs -join ', ')" -ForegroundColor Gray
+} else {
+    Write-Host "   ✗ Порядок IP не меняется (всегда: $($firstIPs[0]))" -ForegroundColor Red
+    exit 1
+}
 
-$dc1Count = 0
-$dc2Count = 0
-$dc3Count = 0
-$errors = 0
+# 4. Тест HTTP балансировки через реальные IP
+Write-Host "`n4. Тест HTTP балансировки через DNS (30 запросов)..."
+$stats = @{'172.30.0.11' = 0; '172.30.0.12' = 0; '172.30.0.13' = 0}
 
 1..30 | ForEach-Object {
-    $port = Get-Random -Minimum 8081 -Maximum 8084
-    try {
-        $response = Invoke-WebRequest -Uri "http://localhost:$port/" -UseBasicParsing -TimeoutSec 2 -ErrorAction SilentlyContinue
-        if ($response.StatusCode -eq 200) {
-            switch ($port) {
-                8081 { $dc1Count++ }
-                8082 { $dc2Count++ }
-                8083 { $dc3Count++ }
-            }
-        }
-    } catch {
-        $errors++
-    }
+    # Делаем DNS запрос и берем первый IP (как делает клиент)
+    $result = docker exec search-dnsmasq nslookup search.lab 127.0.0.1 2>&1
+    $ip = ($result | Select-String "^Address: 172\.30\.0\.\d+$" | Select-Object -First 1).Line -replace "Address:\s*", ""
     
-    # Progress
-    if ($_ % 10 -eq 0) {
-        Write-Host "  Прогресс: $_ / 30 запросов отправлено..." -ForegroundColor Gray
+    # Делаем HTTP запрос к этому IP
+    $response = docker exec search-dnsmasq wget -qO- --timeout=2 "http://${ip}/" 2>&1
+    if ($response -match "nginx") {
+        $stats[$ip]++
     }
 }
 
-# Шаг 5: Результаты
-Write-Host "`nШаг 5: Результаты балансировки..." -ForegroundColor Yellow
-Write-Host "  DC1 (8081): $dc1Count запросов ($([math]::Round($dc1Count/30*100, 1))%)" -ForegroundColor White
-Write-Host "  DC2 (8082): $dc2Count запросов ($([math]::Round($dc2Count/30*100, 1))%)" -ForegroundColor White
-Write-Host "  DC3 (8083): $dc3Count запросов ($([math]::Round($dc3Count/30*100, 1))%)" -ForegroundColor White
-Write-Host "  Ошибки: $errors" -ForegroundColor White
+# 5. Результаты
+Write-Host "`n5. Результаты распределения:"
+Write-Host "   DC1 (172.30.0.11): $($stats['172.30.0.11']) запросов ($([math]::Round($stats['172.30.0.11']/30*100))%)"
+Write-Host "   DC2 (172.30.0.12): $($stats['172.30.0.12']) запросов ($([math]::Round($stats['172.30.0.12']/30*100))%)"
+Write-Host "   DC3 (172.30.0.13): $($stats['172.30.0.13']) запросов ($([math]::Round($stats['172.30.0.13']/30*100))%)"
 
-# Проверка равномерности
-$distribution = @($dc1Count, $dc2Count, $dc3Count)
-$avg = ($distribution | Measure-Object -Average).Average
-$maxDev = ($distribution | ForEach-Object { [math]::Abs($_ - $avg) } | Measure-Object -Maximum).Maximum
+# 6. Оценка
+$total = $stats['172.30.0.11'] + $stats['172.30.0.12'] + $stats['172.30.0.13']
+$avg = $total / 3
+$deviations = $stats.Values | ForEach-Object { [math]::Abs($_ - $avg) }
+$maxDeviation = ($deviations | Measure-Object -Maximum).Maximum
 
-Write-Host "`n═══════════════════════════════════════════════════════════════" -ForegroundColor Cyan
-if ($maxDev -le ($avg * 0.5)) {
-    Write-Host "  ✅ DNS ROUND ROBIN РАБОТАЕТ КОРРЕКТНО!" -ForegroundColor Green
-    Write-Host "  Распределение относительно равномерное (макс. отклонение: $([math]::Round($maxDev, 1)))" -ForegroundColor Green
+Write-Host "`n6. Оценка равномерности:"
+Write-Host "   Среднее: $([math]::Round($avg, 1)) запросов на DC"
+Write-Host "   Макс. отклонение: $([math]::Round($maxDeviation, 1))"
+
+if ($total -eq 30 -and $maxDeviation -le ($avg * 0.5)) {
+    Write-Host "`n✓ Тест пройден: DNS Round Robin работает корректно`n" -ForegroundColor Green
+    exit 0
 } else {
-    Write-Host "  ⚠️ Распределение неравномерное (отклонение: $([math]::Round($maxDev, 1)))" -ForegroundColor Yellow
+    Write-Host "`n✗ Тест не пройден: распределение неравномерное`n" -ForegroundColor Red
+    exit 1
 }
-Write-Host "═══════════════════════════════════════════════════════════════`n" -ForegroundColor Cyan
-
-# Шаг 6: Проверка логов dnsmasq
-Write-Host "Шаг 6: Проверка логов DNS-сервера..." -ForegroundColor Yellow
-docker logs search-dnsmasq --tail 10 2>&1 | ForEach-Object {
-    if ($_ -match "query|reply") {
-        Write-Host "  $_" -ForegroundColor Gray
-    }
-}
-
-Write-Host "`nТест завершён!`n" -ForegroundColor Green

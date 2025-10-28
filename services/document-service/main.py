@@ -1,5 +1,5 @@
 """
-Document Service - управление документами поисковой системы
+Сервис документов. Мы храним и отдаём данные для поиска.
 """
 import os
 import json
@@ -15,35 +15,29 @@ import aio_pika
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
 
-# =====================================================
-# Configuration
-# =====================================================
+# Мы задаём настройки подключения
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://docker:secret@localhost:5432/documents_db")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 
-# =====================================================
-# Prometheus metrics
-# =====================================================
+# Мы объявляем метрики Prometheus
 REQUEST_COUNT = Counter('document_service_requests_total', 'Total requests', ['method', 'endpoint', 'status'])
 REQUEST_LATENCY = Histogram('document_service_request_duration_seconds', 'Request latency', ['method', 'endpoint'])
 INDEXING_QUEUE_SIZE = Counter('document_indexing_queue_total', 'Documents sent to indexing queue')
 
-# =====================================================
-# Global connections
-# =====================================================
+# Мы держим глобальные подключения
 db_pool: Optional[asyncpg.Pool] = None
 rabbitmq_connection: Optional[aio_pika.Connection] = None
 rabbitmq_channel: Optional[aio_pika.Channel] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifecycle manager"""
+    """Мы поднимаем подключения при старте и закрываем их."""
     global db_pool, rabbitmq_connection, rabbitmq_channel
     
-    # Database pool
+    # Мы создаём пул соединений
     db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
     
-    # Create tables
+    # Мы создаём таблицы если их нет
     async with db_pool.acquire() as conn:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS documents (
@@ -60,7 +54,7 @@ async def lifespan(app: FastAPI):
             CREATE INDEX IF NOT EXISTS idx_documents_indexed ON documents(indexed);
         """)
     
-    # RabbitMQ connection
+    # Мы открываем соединение с RabbitMQ
     rabbitmq_connection = await aio_pika.connect_robust(RABBITMQ_URL)
     rabbitmq_channel = await rabbitmq_connection.channel()
     await rabbitmq_channel.declare_queue("indexing_queue", durable=True)
@@ -70,9 +64,7 @@ async def lifespan(app: FastAPI):
     await db_pool.close()
     await rabbitmq_connection.close()
 
-# =====================================================
-# FastAPI app
-# =====================================================
+# Мы создаём приложение FastAPI
 app = FastAPI(
     title="Document Service",
     description="Управление документами поисковой системы (ЛР4, Вариант 8)",
@@ -80,9 +72,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# =====================================================
-# Models
-# =====================================================
+# Мы описываем модели данных
 class DocumentCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
     content: str = Field(..., min_length=1)
@@ -105,11 +95,9 @@ class DocumentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-# =====================================================
-# Helper functions
-# =====================================================
+# Мы описываем вспомогательные функции
 async def send_to_indexing_queue(doc_id: int, title: str, content: str):
-    """Send document to indexing queue"""
+    """Мы отправляем документ в очередь индексации."""
     try:
         message_body = json.dumps({
             "doc_id": doc_id,
@@ -133,12 +121,10 @@ async def send_to_indexing_queue(doc_id: int, title: str, content: str):
     except Exception as e:
         print(f"Failed to send document to queue: {e}")
 
-# =====================================================
-# Endpoints
-# =====================================================
+# Мы описываем HTTP-эндпоинты
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Мы подтверждаем что сервис работает."""
     try:
         async with db_pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
@@ -148,12 +134,12 @@ async def health_check():
 
 @app.get("/metrics")
 async def metrics():
-    """Prometheus metrics endpoint"""
+    """Мы отдаём метрики Prometheus."""
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 @app.post("/api/documents", response_model=DocumentResponse, status_code=201)
 async def create_document(doc: DocumentCreate):
-    """Create a new document"""
+    """Мы создаём документ."""
     with REQUEST_LATENCY.labels(method="POST", endpoint="/api/documents").time():
         try:
             async with db_pool.acquire() as conn:
@@ -180,7 +166,7 @@ async def create_document(doc: DocumentCreate):
 
 @app.get("/api/documents/{doc_id}", response_model=DocumentResponse)
 async def get_document(doc_id: int):
-    """Get document by ID"""
+    """Мы отдаём документ по id."""
     with REQUEST_LATENCY.labels(method="GET", endpoint="/api/documents/{id}").time():
         async with db_pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -200,7 +186,7 @@ async def list_documents(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100)
 ):
-    """List documents with pagination"""
+    """Мы показываем список документов."""
     with REQUEST_LATENCY.labels(method="GET", endpoint="/api/documents").time():
         async with db_pool.acquire() as conn:
             rows = await conn.fetch(
@@ -218,9 +204,9 @@ async def list_documents(
 
 @app.put("/api/documents/{doc_id}", response_model=DocumentResponse)
 async def update_document(doc_id: int, doc: DocumentUpdate):
-    """Update document"""
+    """Мы обновляем документ."""
     with REQUEST_LATENCY.labels(method="PUT", endpoint="/api/documents/{id}").time():
-        # Build dynamic update query
+        # Мы собираем динамический запрос
         updates = []
         values = []
         param_num = 1
@@ -249,7 +235,7 @@ async def update_document(doc_id: int, doc: DocumentUpdate):
             raise HTTPException(status_code=400, detail="No fields to update")
         
         updates.append(f"updated_at = NOW()")
-        updates.append(f"indexed = FALSE")  # Нужна переиндексация
+        updates.append(f"indexed = FALSE")  # Мы просим переиндексацию
         values.append(doc_id)
         
         query = f"""
@@ -268,7 +254,7 @@ async def update_document(doc_id: int, doc: DocumentUpdate):
         
         document = DocumentResponse(**dict(row))
         
-        # Переиндексация
+        # Мы отправляем документ на переиндексацию
         asyncio.create_task(send_to_indexing_queue(document.id, document.title, document.content))
         
         REQUEST_COUNT.labels(method="PUT", endpoint="/api/documents/{id}", status="success").inc()
@@ -276,7 +262,7 @@ async def update_document(doc_id: int, doc: DocumentUpdate):
 
 @app.delete("/api/documents/{doc_id}")
 async def delete_document(doc_id: int):
-    """Delete document"""
+    """Мы удаляем документ."""
     with REQUEST_LATENCY.labels(method="DELETE", endpoint="/api/documents/{id}").time():
         async with db_pool.acquire() as conn:
             result = await conn.execute("DELETE FROM documents WHERE id = $1", doc_id)

@@ -1,6 +1,5 @@
 """
-Indexer Worker - асинхронная индексация документов
-Читает сообщения из RabbitMQ и строит inverted index
+Мы индексируем документы и читаем очереди.
 """
 import os
 import json
@@ -13,16 +12,12 @@ import asyncpg
 import aio_pika
 import redis.asyncio as aioredis
 
-# =====================================================
-# Configuration
-# =====================================================
+# Мы задаём настройки подключения
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://docker:secret@localhost:5432/search_db")
 RABBITMQ_URL = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
 VALKEY_URL = os.getenv("VALKEY_URL", "redis://localhost:6379/1")
 
-# =====================================================
-# Text processing
-# =====================================================
+# Мы готовим обработку текста
 STOPWORDS = set([
     'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from',
     'has', 'he', 'in', 'is', 'it', 'its', 'of', 'on', 'that', 'the',
@@ -30,21 +25,21 @@ STOPWORDS = set([
 ])
 
 def tokenize(text: str) -> List[str]:
-    """Tokenize text into words"""
-    # Lowercase and remove punctuation
+    """Мы разбиваем текст на слова."""
+    # Мы приводим к нижнему регистру и убираем знаки
     text = text.lower()
     text = re.sub(r'[^\w\s]', ' ', text)
     
-    # Split into words
+    # Мы делим на слова
     words = text.split()
     
-    # Remove stopwords and short words
+    # Мы убираем стоп-слова и короткие слова
     tokens = [w for w in words if w not in STOPWORDS and len(w) > 2]
     
     return tokens
 
 def calculate_tf(tokens: List[str]) -> Dict[str, float]:
-    """Calculate term frequency"""
+    """Мы считаем частоты слов."""
     if not tokens:
         return {}
     
@@ -53,18 +48,16 @@ def calculate_tf(tokens: List[str]) -> Dict[str, float]:
     
     return {term: count / total for term, count in counter.items()}
 
-# =====================================================
-# Database operations
-# =====================================================
+# Мы работаем с базой данных
 async def get_or_create_term(conn: asyncpg.Connection, term: str) -> int:
-    """Get term ID or create if not exists"""
-    # Try to get existing
+    """Мы получаем id термина или создаём его."""
+    # Мы пытаемся найти существующий термин
     term_id = await conn.fetchval("SELECT id FROM terms WHERE term = $1", term)
     
     if term_id:
         return term_id
     
-    # Create new
+    # Мы создаём новый термин
     try:
         term_id = await conn.fetchval(
             "INSERT INTO terms (term) VALUES ($1) RETURNING id",
@@ -72,7 +65,7 @@ async def get_or_create_term(conn: asyncpg.Connection, term: str) -> int:
         )
         return term_id
     except asyncpg.UniqueViolationError:
-        # Race condition - another worker created it
+    # Мы отлавливаем ситуацию гонки
         term_id = await conn.fetchval("SELECT id FROM terms WHERE term = $1", term)
         return term_id
 
@@ -83,10 +76,10 @@ async def index_document(
     title: str,
     content: str
 ):
-    """Index a document"""
+    """Мы индексируем документ."""
     print(f"Indexing document {doc_id}: {title[:50]}...")
     
-    # Tokenize title and content
+    # Мы готовим текст
     all_text = f"{title} {content}"
     tokens = tokenize(all_text)
     
@@ -94,13 +87,13 @@ async def index_document(
         print(f"No tokens found in document {doc_id}")
         return
     
-    # Calculate term frequencies
+    # Мы считаем частоты терминов
     tf_scores = calculate_tf(tokens)
     
     async with db_pool.acquire() as conn:
-        # Start transaction
+        # Мы запускаем транзакцию
         async with conn.transaction():
-            # Store document metadata
+            # Мы сохраняем метаданные документа
             snippet = content[:200] + "..." if len(content) > 200 else content
             await conn.execute(
                 """
@@ -112,17 +105,17 @@ async def index_document(
                 doc_id, title, snippet
             )
             
-            # Delete old postings for this document
+            # Мы удаляем старые записи по документу
             await conn.execute("DELETE FROM postings WHERE doc_id = $1", doc_id)
             
-            # Insert new postings
+            # Мы вставляем новые записи
             for term, tf in tf_scores.items():
                 term_id = await get_or_create_term(conn, term)
                 
-                # Find positions of this term in the text
+                # Мы ищем позиции термина
                 positions = [i for i, t in enumerate(tokens) if t == term]
                 
-                # Simple TF-IDF score (just TF for now, IDF calculation requires document count)
+                # Мы используем простую оценку TF
                 score = tf
                 
                 await conn.execute(
@@ -133,7 +126,7 @@ async def index_document(
                     term_id, doc_id, positions, score
                 )
             
-            # Mark document as indexed in documents table
+            # Мы отмечаем документ как проиндексированный
             await conn.execute(
                 "UPDATE documents SET indexed = TRUE WHERE id = $1",
                 doc_id
@@ -141,9 +134,9 @@ async def index_document(
             
             print(f"Document {doc_id} indexed successfully with {len(tf_scores)} unique terms")
     
-    # Invalidate cache for search queries
+    # Мы инвалидируем кеш
     try:
-        # Clear all search cache (simple approach)
+    # Мы очищаем весь кеш
         cursor = 0
         while True:
             cursor, keys = await redis_client.scan(cursor, match="*", count=100)
@@ -155,15 +148,13 @@ async def index_document(
     except Exception as e:
         print(f"Failed to invalidate cache: {e}")
 
-# =====================================================
-# Worker main loop
-# =====================================================
+# Мы запускаем цикл воркера
 async def process_message(
     message: aio_pika.IncomingMessage,
     db_pool: asyncpg.Pool,
     redis_client: aioredis.Redis
 ):
-    """Process a single message from the queue"""
+    """Мы разбираем одно сообщение очереди."""
     async with message.process():
         try:
             data = json.loads(message.body.decode())
@@ -175,29 +166,29 @@ async def process_message(
             
         except Exception as e:
             print(f"Error processing message: {e}")
-            # Message will be requeued automatically if we raise an exception
+        # Мы знаем что сообщение повторится если поднимем исключение
             raise
 
 async def main():
-    """Main worker loop"""
+    """Мы запускаем основной цикл."""
     print(f"Indexer Worker starting...")
     print(f"Database: {DATABASE_URL}")
     print(f"RabbitMQ: {RABBITMQ_URL}")
     print(f"ValKey: {VALKEY_URL}")
     
-    # Wait a bit for services to be fully ready
+    # Мы ждём пока сервисы поднимутся
     print("Waiting 5 seconds for services to be ready...")
     await asyncio.sleep(5)
     
-    # Connect to database
+    # Мы подключаемся к базе
     db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
     print("Connected to database")
     
-    # Connect to Redis
+    # Мы подключаемся к ValKey
     redis_client = await aioredis.from_url(VALKEY_URL, decode_responses=True)
     print("Connected to ValKey")
     
-    # Connect to RabbitMQ with retry
+    # Мы подключаемся к RabbitMQ с повторами
     max_retries = 5
     for attempt in range(max_retries):
         try:
@@ -212,18 +203,18 @@ async def main():
                 raise
     
     channel = await connection.channel()
-    await channel.set_qos(prefetch_count=1)  # Process one message at a time
+    await channel.set_qos(prefetch_count=1)  # Мы обрабатываем по одному сообщению
     
     queue = await channel.declare_queue("indexing_queue", durable=True)
     print(f"Connected to RabbitMQ, listening on queue 'indexing_queue'")
     
-    # Start consuming
+    # Мы запускаем чтение очереди
     print("Worker ready, waiting for messages...")
     async with queue.iterator() as queue_iter:
         async for message in queue_iter:
             await process_message(message, db_pool, redis_client)
     
-    # Cleanup (won't reach here in normal operation)
+    # Мы чисто закрываем подключения (почти не доходим сюда)
     await db_pool.close()
     await redis_client.close()
     await connection.close()

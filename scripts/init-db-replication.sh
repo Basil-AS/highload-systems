@@ -4,10 +4,10 @@
 
 set -e
 
-echo "🔧 Waiting for PostgreSQL Primary to be ready..."
+echo "🔧 Ожидание готовности основной ноды PostgreSQL..."
 sleep 10
 
-echo "📦 Creating databases..."
+echo "📦 Создание баз данных..."
 docker exec search-postgres-primary psql -U postgres <<-EOSQL
     -- Создание баз данных
     SELECT 'CREATE DATABASE users_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'users_db')\gexec
@@ -16,9 +16,9 @@ docker exec search-postgres-primary psql -U postgres <<-EOSQL
     SELECT 'CREATE DATABASE audit_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'audit_db')\gexec
 EOSQL
 
-echo "📋 Applying schemas..."
+echo "📋 Применение схем..."
 
-# users_db schema
+# Настройка схемы users_db
 docker exec search-postgres-primary psql -U postgres -d users_db <<-EOSQL
     CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -34,7 +34,7 @@ docker exec search-postgres-primary psql -U postgres -d users_db <<-EOSQL
     CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 EOSQL
 
-# documents_db schema
+# Настройка схемы documents_db
 docker exec search-postgres-primary psql -U postgres -d documents_db <<-EOSQL
     CREATE TABLE IF NOT EXISTS documents (
         id SERIAL PRIMARY KEY,
@@ -50,7 +50,7 @@ docker exec search-postgres-primary psql -U postgres -d documents_db <<-EOSQL
     CREATE INDEX IF NOT EXISTS idx_documents_indexed ON documents(indexed);
 EOSQL
 
-# search_db schema
+# Настройка схемы search_db
 docker exec search-postgres-primary psql -U postgres -d search_db <<-EOSQL
     CREATE TABLE IF NOT EXISTS terms (
         id SERIAL PRIMARY KEY,
@@ -77,7 +77,7 @@ docker exec search-postgres-primary psql -U postgres -d search_db <<-EOSQL
     );
 EOSQL
 
-# audit_db schema with partitioning
+# Настройка схемы audit_db с партициями
 docker exec search-postgres-primary psql -U postgres -d audit_db <<-EOSQL
     CREATE TABLE IF NOT EXISTS events (
         event_id BIGSERIAL,
@@ -90,7 +90,7 @@ docker exec search-postgres-primary psql -U postgres -d audit_db <<-EOSQL
         PRIMARY KEY (event_id, timestamp)
     ) PARTITION BY RANGE (timestamp);
 
-    -- Create partitions for 3 months
+    -- Создание партиций на три месяца
     CREATE TABLE IF NOT EXISTS events_2025_10 PARTITION OF events
         FOR VALUES FROM ('2025-10-01') TO ('2025-11-01');
     CREATE TABLE IF NOT EXISTS events_2025_11 PARTITION OF events
@@ -102,9 +102,9 @@ docker exec search-postgres-primary psql -U postgres -d audit_db <<-EOSQL
     CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 EOSQL
 
-echo "✅ Databases and schemas created successfully!"
-echo "📊 Checking replication status..."
+echo "✅ Базы данных и схемы подготовлены"
+echo "📊 Проверка статуса репликации..."
 docker exec search-pg-monitor pg_autoctl show state
 
 echo ""
-echo "🎉 PostgreSQL replication is ready!"
+echo "🎉 Репликация PostgreSQL готова"

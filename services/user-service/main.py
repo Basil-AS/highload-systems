@@ -1,5 +1,5 @@
 """
-User Service - управление пользователями поисковой системы
+Сервис пользователей. Мы держим API для регистрации и входа.
 """
 import os
 import asyncio
@@ -16,38 +16,30 @@ import httpx
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from fastapi.responses import Response
 
-# =====================================================
-# Configuration
-# =====================================================
+# Мы задаём настройки
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://docker:secret@localhost:5432/users_db")
 AUDIT_SERVICE_URL = os.getenv("AUDIT_SERVICE_URL", "http://audit-service:8000")
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# =====================================================
-# Password hashing
-# =====================================================
+# Мы настраиваем хеширование паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# =====================================================
-# Prometheus metrics
-# =====================================================
+# Мы объявляем метрики Prometheus
 REQUEST_COUNT = Counter('user_service_requests_total', 'Total requests', ['method', 'endpoint', 'status'])
 REQUEST_LATENCY = Histogram('user_service_request_duration_seconds', 'Request latency', ['method', 'endpoint'])
 
-# =====================================================
-# Database connection pool
-# =====================================================
+# Мы держим пул соединений с базой
 db_pool: Optional[asyncpg.Pool] = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Lifecycle manager for database connection pool"""
+    """Запускаем и закрываем пул."""
     global db_pool
     db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
     
-    # Create tables if not exist
+    # Создаём таблицы, если их ещё нет
     async with db_pool.acquire() as conn:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -68,9 +60,7 @@ async def lifespan(app: FastAPI):
     
     await db_pool.close()
 
-# =====================================================
-# FastAPI app
-# =====================================================
+# Мы создаём приложение FastAPI
 app = FastAPI(
     title="User Service",
     description="Управление пользователями поисковой системы (ЛР4, Вариант 8)",
@@ -78,9 +68,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# =====================================================
-# Models
-# =====================================================
+# Мы описываем модели запросов и ответов
 class UserRegister(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=50)
@@ -103,9 +91,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
 
-# =====================================================
-# Helper functions
-# =====================================================
+# Мы описываем вспомогательные функции
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -119,7 +105,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 async def get_current_user_id(authorization: Optional[str] = Header(None)) -> int:
-    """Extract user ID from JWT token"""
+    """Достаём user_id из токена."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
     
@@ -134,7 +120,7 @@ async def get_current_user_id(authorization: Optional[str] = Header(None)) -> in
         raise HTTPException(status_code=401, detail="Invalid token")
 
 async def publish_audit_event(event_type: str, aggregate_id: int, event_data: Dict[str, Any], user_id: Optional[int] = None):
-    """Publish event to Audit Service"""
+    """Отправляем событие в аудит."""
     try:
         async with httpx.AsyncClient() as client:
             await client.post(
@@ -149,15 +135,13 @@ async def publish_audit_event(event_type: str, aggregate_id: int, event_data: Di
                 timeout=2.0
             )
     except Exception as e:
-        # Don't fail the request if audit service is down
+        # Если аудит не отвечает, просто логируем
         print(f"Failed to publish audit event: {e}")
 
-# =====================================================
-# Endpoints
-# =====================================================
+# Мы описываем HTTP-эндпоинты
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Мы подтверждаем что сервис работает."""
     try:
         async with db_pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
@@ -167,12 +151,12 @@ async def health_check():
 
 @app.get("/metrics")
 async def metrics():
-    """Prometheus metrics endpoint"""
+    """Метрики для Prometheus."""
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 @app.post("/api/users/register", response_model=UserResponse, status_code=201)
 async def register_user(user: UserRegister):
-    """Register a new user"""
+    """Мы регистрируем пользователя."""
     with REQUEST_LATENCY.labels(method="POST", endpoint="/api/users/register").time():
         try:
             hashed_password = get_password_hash(user.password)
@@ -189,7 +173,7 @@ async def register_user(user: UserRegister):
             
             user_response = UserResponse(**dict(row))
             
-            # Publish audit event (async, non-blocking)
+            # Мы отправляем событие в аудит в фоне
             asyncio.create_task(publish_audit_event(
                 "created",
                 user_response.id,
@@ -209,7 +193,7 @@ async def register_user(user: UserRegister):
 
 @app.post("/api/users/login", response_model=Token)
 async def login_user(credentials: UserLogin):
-    """Login and get access token"""
+    """Мы выдаём токен по логину."""
     with REQUEST_LATENCY.labels(method="POST", endpoint="/api/users/login").time():
         async with db_pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -239,7 +223,7 @@ async def login_user(credentials: UserLogin):
 
 @app.get("/api/users/profile", response_model=UserResponse)
 async def get_profile(user_id: int = Depends(get_current_user_id)):
-    """Get current user profile"""
+    """Мы показываем профиль текущего пользователя."""
     with REQUEST_LATENCY.labels(method="GET", endpoint="/api/users/profile").time():
         async with db_pool.acquire() as conn:
             row = await conn.fetchrow(
@@ -256,8 +240,8 @@ async def get_profile(user_id: int = Depends(get_current_user_id)):
 
 @app.get("/api/users/{user_id}/quota")
 async def get_user_quota(user_id: int):
-    """Get user search quota (for inter-service communication)"""
-    # Простая логика: все пользователи имеют квоту 100 запросов в минуту
+    """Отдаём квоту для других сервисов."""
+    # Мы считаем что у всех по 100 запросов в минуту
     return {
         "user_id": user_id,
         "quota_per_minute": 100,

@@ -1,15 +1,15 @@
-# Скрипт для инициализации баз данных в PostgreSQL с репликацией
-# Выполняется после настройки pg_auto_failover
+# Инициализация баз PostgreSQL с репликацией
+# Скрипт запускается после настройки pg_auto_failover
 
 param(
-    [string]$PrimaryContainer = "pgauto-node2"  # Текущий Primary (после failover)
+    [string]$PrimaryContainer = "pgauto-node2"  # Указывается текущая основная нода после failover
 )
 
-Write-Host "🔧 Waiting for PostgreSQL Primary to be ready..." -ForegroundColor Cyan
-Write-Host "   Using Primary container: $PrimaryContainer" -ForegroundColor Gray
+Write-Host "🔧 Ожидание готовности основной ноды PostgreSQL..." -ForegroundColor Cyan
+Write-Host "   Используемый контейнер: $PrimaryContainer" -ForegroundColor Gray
 Start-Sleep -Seconds 5
 
-Write-Host "📦 Creating databases..." -ForegroundColor Yellow
+Write-Host "📦 Создание баз данных..." -ForegroundColor Yellow
 
 $createDbsSql = @"
 SELECT 'CREATE DATABASE users_db' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'users_db')\gexec
@@ -20,9 +20,9 @@ SELECT 'CREATE DATABASE audit_db' WHERE NOT EXISTS (SELECT FROM pg_database WHER
 
 $createDbsSql | docker exec -i $PrimaryContainer psql -U docker -d postgres
 
-Write-Host "📋 Applying schemas..." -ForegroundColor Yellow
+Write-Host "📋 Применение схем..." -ForegroundColor Yellow
 
-# users_db schema
+# Настройка схемы users_db
 $usersSchemaSql = @"
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 
 $usersSchemaSql | docker exec -i $PrimaryContainer psql -U docker -d users_db
 
-# documents_db schema
+# Настройка схемы documents_db
 $documentsSchemaSql = @"
 CREATE TABLE IF NOT EXISTS documents (
     id SERIAL PRIMARY KEY,
@@ -58,7 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_indexed ON documents(indexed);
 
 $documentsSchemaSql | docker exec -i $PrimaryContainer psql -U docker -d documents_db
 
-# search_db schema
+# Настройка схемы search_db
 $searchSchemaSql = @"
 CREATE TABLE IF NOT EXISTS terms (
     id SERIAL PRIMARY KEY,
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS search_documents (
 
 $searchSchemaSql | docker exec -i $PrimaryContainer psql -U docker -d search_db
 
-# audit_db schema with partitioning
+# Настройка схемы audit_db с партициями
 $auditSchemaSql = @"
 CREATE TABLE IF NOT EXISTS events (
     event_id BIGSERIAL,
@@ -113,10 +113,10 @@ CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
 
 $auditSchemaSql | docker exec -i $PrimaryContainer psql -U docker -d audit_db
 
-Write-Host "✅ Databases and schemas created successfully!" -ForegroundColor Green
-Write-Host "📊 Checking replication status..." -ForegroundColor Cyan
+Write-Host "✅ Базы данных и схемы подготовлены" -ForegroundColor Green
+Write-Host "📊 Проверка статуса репликации..." -ForegroundColor Cyan
 
 docker exec pgauto-monitor pg_autoctl show state
 
 Write-Host ""
-Write-Host "🎉 PostgreSQL replication is ready!" -ForegroundColor Green
+Write-Host "🎉 Репликация PostgreSQL готова" -ForegroundColor Green

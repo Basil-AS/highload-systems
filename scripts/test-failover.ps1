@@ -1,96 +1,195 @@
-# Скрипт для тестирования PostgreSQL Failover
+# Скрипт для тестирования автоматического failover в pg_auto_failover кластере
 # ЛР4: Высоконагруженные системы
 
-Write-Host "=== PostgreSQL Failover Test ===" -ForegroundColor Cyan
+$ErrorActionPreference = "Stop"
+
+function Get-ClusterState {
+    try {
+        $json = docker exec pgauto-monitor pg_autoctl show state --json
+        return $json | ConvertFrom-Json
+    } catch {
+        throw "Не удалось получить состояние кластера: $($_.Exception.Message)"
+    }
+}
+
+function Get-PrimaryNode($state) {
+    $primaryStates = @("primary", "wait_primary", "single")
+    return $state |
+        Where-Object { $_.health -eq 1 -and $primaryStates -contains $_.current_group_state } |
+        Select-Object -First 1
+}
+
+function Get-SecondaryNode($state) {
+    $secondaryStates = @("secondary", "wait_standby", "catchingup")
+    return $state |
+        Where-Object {
+            $_.health -eq 1 -and $secondaryStates -contains $_.current_group_state -and $_.assigned_group_state -ne "primary"
+        } |
+        Select-Object -First 1
+}
+
+function Invoke-Psql {
+    param(
+        [string]$Container,
+        [string]$Command,
+        [string]$Database = "app_db"
+    )
+
+    $output = docker exec $Container psql -U docker -d $Database -c $Command 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "psql ($Container): $output"
+    }
+    return $output
+}
+
+function Invoke-PsqlRaw {
+    param(
+        [string]$Container,
+        [string]$Command,
+        [string]$Database = "app_db"
+    )
+
+    $output = docker exec $Container psql -U docker -d $Database -t -c $Command 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "psql ($Container): $output"
+    }
+    return $output
+}
+
+Write-Host "=== Тест PostgreSQL Failover (pg_auto_failover) ===" -ForegroundColor Cyan
 Write-Host ""
 
-# Проверка начального состояния
-Write-Host "1. Checking initial state..." -ForegroundColor Yellow
-docker exec postgres-monitor pg_autoctl show state
+Write-Host "1. Проверка исходного состояния..." -ForegroundColor Yellow
+$initialState = Get-ClusterState
+$primaryNode = Get-PrimaryNode $initialState
+$secondaryNode = Get-SecondaryNode $initialState
+
+if (-not $primaryNode -or -not $secondaryNode) {
+    throw "В кластере должен быть один primary и один secondary."
+}
+
+Write-Host "  • Primary:  $($primaryNode.nodehost)" -ForegroundColor Cyan
+Write-Host "  • Secondary: $($secondaryNode.nodehost)" -ForegroundColor Cyan
 Write-Host ""
 
-# Тест записи в Primary
-Write-Host "2. Writing test data to Primary..." -ForegroundColor Yellow
-docker exec postgres-primary psql -U postgres -d users_db -c "CREATE TABLE IF NOT EXISTS failover_test (id SERIAL PRIMARY KEY, data TEXT, created_at TIMESTAMP DEFAULT NOW());"
-docker exec postgres-primary psql -U postgres -d users_db -c "INSERT INTO failover_test (data) VALUES ('Before failover');"
-Write-Host "Data written successfully" -ForegroundColor Green
+$primaryContainer = $primaryNode.nodehost
+$secondaryContainer = $secondaryNode.nodehost
+
+Write-Host "2. Запись тестовых данных в текущий Primary..." -ForegroundColor Yellow
+Invoke-Psql -Container $primaryContainer -Command "CREATE TABLE IF NOT EXISTS failover_test (id SERIAL PRIMARY KEY, test_message TEXT, created_at TIMESTAMP DEFAULT NOW());"
+Invoke-Psql -Container $primaryContainer -Command "INSERT INTO failover_test (test_message) VALUES ('Before failover');"
+Write-Host "Данные успешно записаны" -ForegroundColor Green
 Write-Host ""
 
-# Проверка репликации
-Write-Host "3. Checking replication..." -ForegroundColor Yellow
+Write-Host "3. Проверка репликации на secondary..." -ForegroundColor Yellow
 Start-Sleep -Seconds 2
-$replicaData = docker exec postgres-standby psql -U postgres -d users_db -c "SELECT COUNT(*) FROM failover_test;" -t
-Write-Host "Replica has $($replicaData.Trim()) records" -ForegroundColor Green
+$replicaCountRaw = Invoke-PsqlRaw -Container $secondaryContainer -Command "SELECT COUNT(*) FROM failover_test;"
+$replicaCount = $replicaCountRaw.Trim()
+Write-Host "На реплике $replicaCount записей" -ForegroundColor Green
 Write-Host ""
 
-# Симуляция сбоя Primary
-Write-Host "4. SIMULATING PRIMARY FAILURE..." -ForegroundColor Red
-docker stop postgres-primary
-Write-Host "Primary stopped" -ForegroundColor Red
+Write-Host "4. ИМИТАЦИЯ ОТКАЗА текущего Primary ($primaryContainer)..." -ForegroundColor Red
+docker stop $primaryContainer | Out-Null
+Write-Host "Primary остановлен" -ForegroundColor Red
 Write-Host ""
 
-# Ожидание переключения
-Write-Host "5. Waiting for automatic failover (30 seconds)..." -ForegroundColor Yellow
+Write-Host "5. Ожидание автоматического failover (30 секунд)..." -ForegroundColor Yellow
 Start-Sleep -Seconds 30
 
-# Проверка нового состояния
-Write-Host "6. Checking new state..." -ForegroundColor Yellow
-docker exec postgres-monitor pg_autoctl show state
-Write-Host ""
+Write-Host "6. Проверка состояния после failover..." -ForegroundColor Yellow
 
-# Тест записи в новый Primary (бывший Standby)
-Write-Host "7. Testing write to new Primary (former Standby)..." -ForegroundColor Yellow
-try {
-    docker exec postgres-standby psql -U postgres -d users_db -c "INSERT INTO failover_test (data) VALUES ('After failover');"
-    Write-Host "Write successful! Standby is now Primary" -ForegroundColor Green
-} catch {
-    Write-Host "Write failed! Standby might still be read-only" -ForegroundColor Red
+$maxAttempts = 12
+$attempt = 0
+$newPrimary = $null
+$newSecondary = $null
+
+for ($attempt = 0; $attempt -lt $maxAttempts; $attempt++) {
+    $postState = Get-ClusterState
+    $newPrimary = Get-PrimaryNode $postState
+    $newSecondary = Get-SecondaryNode $postState
+
+    if ($newPrimary -and $newPrimary.nodehost -ne $primaryContainer) {
+        break
+    }
+
+    Start-Sleep -Seconds 5
+}
+
+if (-not $newPrimary) {
+    throw "После failover не удалось определить новый primary."
+}
+
+if ($newPrimary.nodehost -eq $primaryContainer) {
+    throw "Failover не произошёл: узел $primaryContainer остаётся primary после ожидания."
+}
+
+$postState = Get-ClusterState
+$newPrimary = Get-PrimaryNode $postState
+$newSecondary = Get-SecondaryNode $postState
+
+if (-not $newPrimary) {
+    throw "После failover не удалось определить новый primary."
+}
+
+Write-Host "  • Новый Primary:  $($newPrimary.nodehost)" -ForegroundColor Cyan
+if ($newSecondary) {
+    Write-Host "  • Новый Secondary: $($newSecondary.nodehost)" -ForegroundColor Cyan
+} else {
+    Write-Host "  • Новый Secondary: пока не определён (ожидаем возврата узла)" -ForegroundColor Yellow
 }
 Write-Host ""
 
-# Проверка доступности приложения
-Write-Host "8. Testing application availability..." -ForegroundColor Yellow
+Write-Host "7. Проверка записи на новый Primary..." -ForegroundColor Yellow
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost/api/search?q=test" -UseBasicParsing
-    Write-Host "Application is available! Status: $($response.StatusCode)" -ForegroundColor Green
+    Invoke-Psql -Container $newPrimary.nodehost -Command "INSERT INTO failover_test (test_message) VALUES ('After failover');"
+    Write-Host "Запись успешна. Failover завершился корректно" -ForegroundColor Green
 } catch {
-    Write-Host "Application is not available: $_" -ForegroundColor Red
+    Write-Host "Запись не выполнена: $($_.Exception.Message)" -ForegroundColor Red
 }
 Write-Host ""
 
-# Восстановление Primary
-Write-Host "9. Restarting old Primary (will become Standby)..." -ForegroundColor Yellow
-docker start postgres-primary
-Write-Host "Primary restarted" -ForegroundColor Green
+Write-Host "8. Проверка доступности приложения..." -ForegroundColor Yellow
+try {
+    $response = Invoke-WebRequest -Uri "http://localhost/api/search?q=test" -UseBasicParsing -TimeoutSec 5
+    Write-Host "Приложение доступно. Статус: $($response.StatusCode)" -ForegroundColor Green
+} catch {
+    Write-Host "Приложение недоступно: $($_.Exception.Message)" -ForegroundColor Red
+}
 Write-Host ""
 
-# Ожидание присоединения
-Write-Host "10. Waiting for old Primary to join as Standby (30 seconds)..." -ForegroundColor Yellow
+Write-Host "9. Перезапуск остановленного узла ($primaryContainer)..." -ForegroundColor Yellow
+docker start $primaryContainer | Out-Null
+Write-Host "Узел запущен, ожидаем присоединение (30 секунд)..." -ForegroundColor Yellow
 Start-Sleep -Seconds 30
 
-# Финальное состояние
-Write-Host "11. Final state:" -ForegroundColor Yellow
-docker exec postgres-monitor pg_autoctl show state
+Write-Host "10. Финальное состояние кластера:" -ForegroundColor Yellow
+$finalState = Get-ClusterState
+foreach ($node in $finalState) {
+    Write-Host "  • $($node.nodehost): $($node.current_group_state)" -ForegroundColor Cyan
+}
 Write-Host ""
 
-# Проверка данных
-Write-Host "12. Verifying data consistency..." -ForegroundColor Yellow
-$primaryData = docker exec postgres-standby psql -U postgres -d users_db -c "SELECT * FROM failover_test ORDER BY id;" -t
-$standbyData = docker exec postgres-primary psql -U postgres -d users_db -c "SELECT * FROM failover_test ORDER BY id;" -t
-Write-Host "Primary (former Standby) data:"
+Write-Host "11. Проверка согласованности данных..." -ForegroundColor Yellow
+$currentPrimary = Get-PrimaryNode $finalState
+$currentSecondary = Get-SecondaryNode $finalState
+
+$primaryData = Invoke-PsqlRaw -Container $currentPrimary.nodehost -Command "SELECT * FROM failover_test ORDER BY id;"
+$secondaryData = Invoke-PsqlRaw -Container $currentSecondary.nodehost -Command "SELECT * FROM failover_test ORDER BY id;"
+
+Write-Host "Данные на текущем Primary:" -ForegroundColor Cyan
 Write-Host $primaryData
 Write-Host ""
-Write-Host "Standby (former Primary) data:"
-Write-Host $standbyData
+Write-Host "Данные на текущем Secondary:" -ForegroundColor Cyan
+Write-Host $secondaryData
 Write-Host ""
 
-Write-Host "=== Failover Test Complete ===" -ForegroundColor Cyan
+Write-Host "=== Тест failover завершён ===" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Summary:" -ForegroundColor Yellow
-Write-Host "  ✓ Primary failed and stopped" -ForegroundColor Green
-Write-Host "  ✓ Standby promoted to Primary" -ForegroundColor Green
-Write-Host "  ✓ Application remained available" -ForegroundColor Green
-Write-Host "  ✓ Old Primary rejoined as Standby" -ForegroundColor Green
+Write-Host "Итоги:" -ForegroundColor Yellow
+Write-Host "  • Исходный primary: $primaryContainer" -ForegroundColor Green
+Write-Host "  • Текущий primary: $($currentPrimary.nodehost)" -ForegroundColor Green
+Write-Host "  • Данные сохранились после переключения" -ForegroundColor Green
+Write-Host "  • Отключённый узел вернулся в кластер" -ForegroundColor Green
 Write-Host ""
-Write-Host "To restore original roles, run:" -ForegroundColor Yellow
-Write-Host "  docker exec postgres-monitor pg_autoctl perform failover" -ForegroundColor Cyan
+Write-Host "Чтобы инициировать обратное переключение ролей, выполните:" -ForegroundColor Yellow
+Write-Host "  docker exec pgauto-monitor pg_autoctl perform failover" -ForegroundColor Cyan

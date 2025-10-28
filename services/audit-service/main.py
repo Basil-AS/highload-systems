@@ -11,21 +11,21 @@ from fastapi.responses import Response
 
 app = FastAPI(title="Audit Service", version="1.0.0")
 
-# Prometheus metrics
+# Мы объявляем метрики Prometheus
 events_recorded = Counter('audit_events_recorded_total', 'Total events recorded', ['aggregate_type', 'event_type'])
 replay_requests = Counter('audit_replay_requests_total', 'Total replay requests', ['aggregate_type'])
 replay_duration = Histogram('audit_replay_duration_seconds', 'Replay duration')
 
-# Database connection pool
+# Мы держим подключения к базе и очереди
 db_pool = None
 rabbitmq_connection = None
 rabbitmq_channel = None
 
-# Models
+# Мы описываем модели данных
 class AuditEvent(BaseModel):
-    aggregate_type: str  # 'user', 'document', 'search'
+    aggregate_type: str  # мы ожидаем значения user, document или search
     aggregate_id: str
-    event_type: str  # 'created', 'updated', 'deleted'
+    event_type: str  # мы используем created, updated или deleted
     event_data: dict
     user_id: Optional[str] = None
 
@@ -39,19 +39,19 @@ class ReplayResponse(BaseModel):
 async def startup():
     global db_pool, rabbitmq_connection, rabbitmq_channel
     
-    # Database connection
+    # Мы открываем пул соединений с базой
     database_url = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres-primary:5432/audit_db")
     db_pool = await asyncpg.create_pool(database_url, min_size=2, max_size=10)
     
-    # RabbitMQ connection
+    # Мы подключаемся к RabbitMQ
     rabbitmq_url = os.getenv("RABBITMQ_URL", "amqp://admin:admin@rabbitmq:5672/")
     rabbitmq_connection = await aio_pika.connect_robust(rabbitmq_url)
     rabbitmq_channel = await rabbitmq_connection.channel()
     
-    # Declare queue for audit events
+    # Мы объявляем очередь аудита
     await rabbitmq_channel.declare_queue("audit_events", durable=True)
     
-    # Start consuming events
+    # Мы запускаем обработку сообщений
     queue = await rabbitmq_channel.get_queue("audit_events")
     await queue.consume(process_audit_event)
     
@@ -65,7 +65,7 @@ async def shutdown():
         await rabbitmq_connection.close()
 
 async def process_audit_event(message: aio_pika.IncomingMessage):
-    """Process audit events from RabbitMQ"""
+    """Мы разбираем события из очереди."""
     async with message.process():
         try:
             event_data = json.loads(message.body.decode())
@@ -75,7 +75,7 @@ async def process_audit_event(message: aio_pika.IncomingMessage):
 
 @app.post("/events", status_code=201)
 async def record_event(event: AuditEvent):
-    """Record an audit event"""
+    """Мы сохраняем событие аудита."""
     try:
         async with db_pool.acquire() as conn:
             await conn.execute("""
@@ -84,7 +84,7 @@ async def record_event(event: AuditEvent):
             """, event.aggregate_type, event.aggregate_id, event.event_type, 
             json.dumps(event.event_data), event.user_id)
         
-        # Update metrics
+        # Мы обновляем метрики
         events_recorded.labels(
             aggregate_type=event.aggregate_type,
             event_type=event.event_type
@@ -97,12 +97,12 @@ async def record_event(event: AuditEvent):
 
 @app.get("/replay/{aggregate_type}/{aggregate_id}", response_model=ReplayResponse)
 async def replay_events(aggregate_type: str, aggregate_id: str):
-    """Replay events to reconstruct aggregate state"""
+    """Мы восстанавливаем состояние по событиям."""
     
     with replay_duration.time():
         try:
             async with db_pool.acquire() as conn:
-                # Get all events for this aggregate
+                # Мы достаём все события по сущности
                 events = await conn.fetch("""
                     SELECT event_type, event_data, timestamp
                     FROM events
@@ -113,7 +113,7 @@ async def replay_events(aggregate_type: str, aggregate_id: str):
             if not events:
                 raise HTTPException(status_code=404, detail="No events found for this aggregate")
             
-            # Replay events to build current state
+            # Мы прокручиваем события чтобы получить состояние
             state = {}
             for event in events:
                 event_type = event['event_type']
@@ -126,7 +126,7 @@ async def replay_events(aggregate_type: str, aggregate_id: str):
                 elif event_type == 'deleted':
                     state = {'deleted': True, 'deleted_at': event['timestamp'].isoformat()}
             
-            # Update metrics
+            # Мы обновляем метрики
             replay_requests.labels(aggregate_type=aggregate_type).inc()
             
             return ReplayResponse(
@@ -148,7 +148,7 @@ async def get_events(
     limit: int = 100,
     offset: int = 0
 ):
-    """Get all events for an aggregate"""
+    """Мы отдаём события по сущности."""
     try:
         async with db_pool.acquire() as conn:
             events = await conn.fetch("""
@@ -178,7 +178,7 @@ async def get_events(
 
 @app.get("/stats")
 async def get_stats():
-    """Get audit statistics"""
+    """Мы отдаём статистику по аудиту."""
     try:
         async with db_pool.acquire() as conn:
             stats = await conn.fetchrow("""
@@ -208,7 +208,7 @@ async def get_stats():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Мы подтверждаем что сервис работает."""
     try:
         async with db_pool.acquire() as conn:
             await conn.fetchval("SELECT 1")
@@ -218,5 +218,5 @@ async def health_check():
 
 @app.get("/metrics")
 async def metrics():
-    """Prometheus metrics endpoint"""
+    """Мы отдаём метрики Prometheus."""
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

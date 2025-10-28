@@ -4,52 +4,47 @@
 $ErrorActionPreference = "Stop"
 
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
-Write-Host "  Backup/Restore Test Script" -ForegroundColor Cyan
+Write-Host "  Тест резервного копирования и восстановления" -ForegroundColor Cyan
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
 
 # Параметры
-$ContainerName = "pgauto-node2"  # Текущий Primary после failover
+$ContainerName = "pgauto-node1"  # Primary node
 $User = "docker"
 $BackupDir = ".\backups"
 $TestBackupBase = "test_$(Get-Date -Format 'yyyy-MM-dd_HH-mm-ss')"
 
-Write-Host "Step 1: Creating test data..." -ForegroundColor Yellow
+Write-Host "Шаг 1: Создание тестовых данных..." -ForegroundColor Yellow
 
-# Создаём тестовые данные в каждой базе
+# База данных
+$db = "app_db"
+
+# Создаём тестовые данные в разных таблицах
 $testData = @{
-    "users_db" = "INSERT INTO users (username, email, hashed_password, full_name) VALUES ('testuser', 'test@backup.com', 'hash123', 'Test User');"
-    "documents_db" = "INSERT INTO documents (title, content, author) VALUES ('Test Doc', 'Test content for backup', 'Test Author');"
-    "search_db" = "INSERT INTO terms (term, document_count) VALUES ('testterm', 1);"
-    "audit_db" = "INSERT INTO events (user_id, action, entity_type, entity_id, details) VALUES (1, 'TEST', 'backup', 999, '{""test"": true}');"
+    "users" = "INSERT INTO users (username, email, hashed_password, full_name) VALUES ('testuser', 'test@backup.com', 'hash123', 'Test User');"
+    "documents" = "INSERT INTO documents (title, content, author) VALUES ('Test Doc', 'Test content for backup', 'Test Author');"
+    "terms" = "INSERT INTO terms (term, document_count) VALUES ('testterm', 1);"
 }
 
 $originalCounts = @{}
 
-foreach ($db in $testData.Keys) {
+foreach ($table in $testData.Keys) {
     # Вставляем тестовые данные
-    docker exec $ContainerName psql -U $User -d $db -c $testData[$db] > $null 2>&1
+    docker exec $ContainerName psql -U $User -d $db -c $testData[$table] > $null 2>&1
     
-    # Запоминаем количество строк ПОСЛЕ вставки
-    $table = switch ($db) {
-        "users_db" { "users" }
-        "documents_db" { "documents" }
-        "search_db" { "terms" }
-        "audit_db" { "events" }
-    }
-    
+    # Запоминается количество строк после вставки
     $count = docker exec $ContainerName psql -U $User -d $db -t -c "SELECT COUNT(*) FROM $table;" 2>$null | Select-Object -First 1
     if ($count) {
-        $originalCounts[$db] = $count.Trim()
-        Write-Host "  $db.$table : $($originalCounts[$db]) rows" -ForegroundColor White
+        $originalCounts[$table] = $count.Trim()
+        Write-Host "  $table : $($originalCounts[$table]) строк" -ForegroundColor White
     } else {
-        Write-Host "  $db.$table : ERROR getting count" -ForegroundColor Red
-        $originalCounts[$db] = "0"
+        Write-Host "  $table : ошибка получения количества" -ForegroundColor Red
+        $originalCounts[$table] = "0"
     }
 }
 
 Write-Host ""
-Write-Host "Step 2: Creating backup..." -ForegroundColor Yellow
+Write-Host "Шаг 2: Создание резервной копии..." -ForegroundColor Yellow
 $TestBackupDir = Join-Path $BackupDir $TestBackupBase
 .\scripts\backup.ps1 -BackupDir $TestBackupDir -ContainerName $ContainerName -User $User
 
@@ -57,36 +52,28 @@ $TestBackupDir = Join-Path $BackupDir $TestBackupBase
 $actualBackupDir = Get-ChildItem $TestBackupDir | Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
 
 if (!(Test-Path $actualBackupDir)) {
-    Write-Host "❌ Backup failed - directory not created" -ForegroundColor Red
+    Write-Host "❌ Не удалось создать директорию с резервной копией" -ForegroundColor Red
     exit 1
 }
 
 Write-Host ""
-Write-Host "Step 3: Simulating data loss (dropping databases)..." -ForegroundColor Yellow
+Write-Host "Шаг 3: Имитация потери данных (удаление таблиц)..." -ForegroundColor Yellow
 
-foreach ($db in $testData.Keys) {
-    docker exec $ContainerName psql -U $User -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$db' AND pid <> pg_backend_pid();" > $null 2>&1
-    docker exec $ContainerName psql -U $User -d postgres -c "DROP DATABASE IF EXISTS $db;" > $null 2>&1
-    Write-Host "  Dropped $db" -ForegroundColor Red
+foreach ($table in $testData.Keys) {
+    docker exec $ContainerName psql -U $User -d $db -c "DELETE FROM $table WHERE true;" > $null 2>&1
+    Write-Host "  Таблица $table очищена" -ForegroundColor Red
 }
 
 Write-Host ""
-Write-Host "Step 4: Restoring from backup..." -ForegroundColor Yellow
+Write-Host "Шаг 4: Восстановление из резервной копии..." -ForegroundColor Yellow
 .\scripts\restore.ps1 -BackupPath $actualBackupDir -ContainerName $ContainerName -User $User -Force
 
 Write-Host ""
-Write-Host "Step 5: Verifying restored data..." -ForegroundColor Yellow
+Write-Host "Шаг 5: Проверка восстановленных данных..." -ForegroundColor Yellow
 
 $allGood = $true
 
-foreach ($db in $testData.Keys) {
-    $table = switch ($db) {
-        "users_db" { "users" }
-        "documents_db" { "documents" }
-        "search_db" { "terms" }
-        "audit_db" { "events" }
-    }
-    
+foreach ($table in $testData.Keys) {
     $count = docker exec $ContainerName psql -U $User -d $db -t -c "SELECT COUNT(*) FROM $table;" 2>$null | Select-Object -First 1
     if ($count) {
         $restoredCount = $count.Trim()
@@ -94,17 +81,14 @@ foreach ($db in $testData.Keys) {
         $restoredCount = "ERROR"
     }
     
-    # Сравнение с учетом типов (убираем лишние пробелы)
-    $expected = $originalCounts[$db].Trim()
+    # Сравнение с учетом типов (убираются лишние пробелы)
+    $expected = $originalCounts[$table].Trim()
     $actual = $restoredCount.Trim()
     
-    # Debug: показать типы и значения
-    # Write-Host "DEBUG: '$db' -> expected='$expected' ($($expected.GetType().Name)), actual='$actual' ($($actual.GetType().Name))" -ForegroundColor Gray
-    
     if ($expected -eq $actual) {
-        Write-Host "  ✓ $db.$table : $actual rows (match!)" -ForegroundColor Green
+        Write-Host "  ✓ $table : $actual строк (совпадает)" -ForegroundColor Green
     } else {
-        Write-Host "  ✗ $db.$table : expected '$expected', got '$actual'" -ForegroundColor Red
+        Write-Host "  ✗ $table : ожидалось '$expected', получено '$actual'" -ForegroundColor Red
         $allGood = $false
     }
 }
@@ -113,11 +97,11 @@ Write-Host ""
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
 
 if ($allGood) {
-    Write-Host "  ✅ BACKUP/RESTORE TEST PASSED!" -ForegroundColor Green
+    Write-Host "  ✅ Проверка резервного копирования и восстановления успешно пройдена" -ForegroundColor Green
 } else {
-    Write-Host "  ❌ BACKUP/RESTORE TEST FAILED!" -ForegroundColor Red
+    Write-Host "  ❌ Проверка резервного копирования и восстановления завершилась с ошибками" -ForegroundColor Red
 }
 
 Write-Host "═══════════════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Test backup directory: $actualBackupDir" -ForegroundColor Yellow
+Write-Host "Каталог тестовой резервной копии: $actualBackupDir" -ForegroundColor Yellow

@@ -66,7 +66,7 @@ foreach ($book in $books) {
         continue
     }
     
-    # Подготовка данных
+    # Подготовка данных для API
     $payload = @{
         title = $book.title
         content = $book.content
@@ -76,7 +76,7 @@ foreach ($book in $books) {
         $payload.author = $book.author
     }
     
-    # Преобразование в JSON
+    # Формирование JSON
     $json = $payload | ConvertTo-Json -Depth 3 -Compress
     
     # Отправка запроса
@@ -87,10 +87,10 @@ foreach ($book in $books) {
             -Body $json `
             -ErrorAction Stop
         
-        # Если указана дата, обновляем её в БД напрямую
+    # При наличии даты выполняется прямое обновление в БД
         if ($book.created_at) {
             $docId = $response.id
-            # Сохраняем для последующего обновления
+            # Значение добавляется в очередь для последующего обновления
             $updateQueue += @{
                 id = $docId
                 date = $book.created_at
@@ -98,20 +98,20 @@ foreach ($book in $books) {
             }
         }
         
-        Write-Host "✓ $title" -ForegroundColor Green
+    Write-Host "✓ Успешно: $title" -ForegroundColor Green
         if ($book.author) {
-            Write-Host "  └─ Автор: $($book.author)" -ForegroundColor Gray
+        Write-Host "  └─ Автор: $($book.author)" -ForegroundColor Gray
         }
         if ($book.created_at) {
-            Write-Host "  └─ Дата: $($book.created_at)" -ForegroundColor Gray
+        Write-Host "  └─ Дата: $($book.created_at)" -ForegroundColor Gray
         }
         
         $created++
         Start-Sleep -Milliseconds 200
         
     } catch {
-        Write-Host "✗ $title" -ForegroundColor Red
-        Write-Host "  └─ Ошибка: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "✗ Ошибка при обработке: $title" -ForegroundColor Red
+    Write-Host "  └─ Детали: $($_.Exception.Message)" -ForegroundColor Red
         $failed++
         $errors += @{
             title = $title
@@ -161,7 +161,7 @@ Write-Host "💡 Откройте http://localhost для просмотра з�
 # Примечание о датах
 if ($books | Where-Object { $_.created_at }) {
     Write-Host ""
-    Write-Host "⚠️  ПРИМЕЧАНИЕ:" -ForegroundColor Yellow
+    Write-Host "⚠️  Примечание:" -ForegroundColor Yellow
     Write-Host "   Для обновления дат создания документов требуется прямой доступ к БД." -ForegroundColor Gray
     Write-Host "   Текущая дата будет установлена автоматически при создании." -ForegroundColor Gray
     Write-Host ""
